@@ -7,6 +7,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
+
 // Connecting to transcription server
 const transcriptionServerAddress = 'http://localhost:3000';
 
@@ -24,7 +25,27 @@ io.on('connection', async (socket) => {
     const userID = socket.id;
     users.push(userID);
 
-    socket.on('startAudio', async (unusedID) => {
+    socket.on('startAudio', async () => {
+        handleStartAudio();
+    });
+
+    socket.on('streamAudio', (audioData) => {
+        handleStreamAudio(audioData);
+    });
+
+    socket.on('endAudio', () => {
+    });
+
+    socket.on('disconnect', () => {
+        handleAudioDisconnect();
+    });
+
+    const handleTranscript = (data) => {
+        console.log(data);
+        socket.emit('transcript', data);
+    }
+
+    const handleStartAudio = () => {
         console.log('Start of Audio for user:' + userID);
         console.log('Users: ' + users);
 
@@ -38,17 +59,18 @@ io.on('connection', async (socket) => {
 
         // Forward command to transcription server
         transcriptionServer.emit('startAudio', userID);
-    });
+    }
 
-    socket.on('streamAudio', (audioData) => {
+    const handleStreamAudio = (audioData) => {
         // Forward audio data to transcription server
         if (transcriptionServer) 
             transcriptionServer.emit('streamAudio', audioData);
         else
             console.warn('Tried to streamAudio but transcription server not connected');
-    });
+    }
 
-    socket.on('endAudio', () => {
+    const handleEndAudio = () => {
+        handleEndAudio();
         console.log('End of Audio');
         // Forward command to transcription server
         if (transcriptionServer) {
@@ -57,9 +79,9 @@ io.on('connection', async (socket) => {
         }
         else
             console.warn('Tried to end audio, but transcription server not connected');
-    });
+    }
 
-    socket.on('disconnect', () => {
+    const handleAudioDisconnect = () => {
         console.log('user disconnected');
         users = users.filter((user) => user !== userID);
         console.log('Users: ' + users);
@@ -69,12 +91,8 @@ io.on('connection', async (socket) => {
             console.warn('User disconnected, transcription server not disconnected, disconnecting now')
             transcriptionServer.disconnect();
         }
-    });
-
-    const handleTranscript = (data) => {
-        console.log(data);
-        socket.emit('transcript', data);
     }
+
 });
 
 server.listen(1000, () => {

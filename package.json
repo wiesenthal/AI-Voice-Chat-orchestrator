@@ -11,6 +11,7 @@
   "dependencies": {
     "express": "^4.18.2",
     "http": "^0.0.1-security",
+    "node-vad": "^1.1.4",
     "socket.io": "^4.6.1",
     "socket.io-client": "^4.6.1",
     "stream": "^0.0.2"

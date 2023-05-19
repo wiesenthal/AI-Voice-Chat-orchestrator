@@ -13,10 +13,6 @@
   var audioStream;
   var recorder;
   var desiredSampleRate = 16000;
-  // get a unique ID for this user
-  var userID = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-
-
   
   const startRecording = async () => {
     var audioContext = new (window.AudioContext || window.webkitAudioContext)({sampleRate: desiredSampleRate});
@@ -53,21 +49,21 @@
 
       audioInput.connect(recorder);
       recorder.connect(audioContext.destination);
-      socket.emit('startAudio', userID);
+      socket.emit('startAudio');
     });
   }
 
   const stopRecording = async () => {
     if (audioStream) {
-      // wait 1 seconds before stopping the audio stream
+      // wait 0.5 seconds before stopping the audio stream
       await new Promise((resolve, reject) => {
         setTimeout(() => {
           resolve();
-        }, 1000);
+        }, 500);
       });
       audioStream.getTracks()[0].stop();
       recorder.disconnect();
-      socket.emit('endAudio', userID);
+      socket.emit('endAudio');
       console.log('Audio stream stopped');
     }
   }
