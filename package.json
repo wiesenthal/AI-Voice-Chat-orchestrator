@@ -4,17 +4,20 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "tsc && node server.js"
   },
   "author": "",
   "license": "UNLICENSED",
   "dependencies": {
+    "axios": "^1.4.0",
     "express": "^4.18.2",
     "http": "^0.0.1-security",
     "node-vad": "^1.1.4",
     "socket.io": "^4.6.1",
     "socket.io-client": "^4.6.1",
     "stream": "^0.0.2",
+    "typescript": "^5.0.4",
     "uuid": "^9.0.0",
     "uuidv4": "^6.2.13"
   }

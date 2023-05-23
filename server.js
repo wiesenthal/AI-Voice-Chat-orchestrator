@@ -6,12 +6,15 @@ const VAD = require('node-vad');
 
 const { shouldRead } = require('./reader_utils.js');
 const { shouldRespond } = require('./response_utils.js');
-const { abort } = require('process');
+
+const MessageHistory = require('./MessageHistory').default;
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
-const vad = new VAD(VAD.Mode.AGGRESSIVE, 16000, 200);
+const vad = new VAD(VAD.Mode.VERY_AGGRESSIVE, 16000, 100);
+
+const axios = require('axios');
 
 // Connecting to transcription server
 const transcriptionServerAddress = 'http://localhost:3000';
@@ -35,7 +38,8 @@ io.on('connection', async (socket) => {
     });
 
     socket.on('streamAudio', (audioData) => {
-        handleStreamAudio(audioData);
+        handleStreamAudioDetection(audioData);
+        //handleStreamAudioButton(audioData);
     });
 
     socket.on('endAudio', () => {
@@ -46,8 +50,8 @@ io.on('connection', async (socket) => {
         handleAudioDisconnect();
     });
 
-    const message_history = [
-    ]
+    // instantiate message history
+    let user_message_history = new MessageHistory(userID);
 
     let abortedText = '';
     let shouldAbort = false;
@@ -65,15 +69,47 @@ io.on('connection', async (socket) => {
             return;
         }
         shouldAbort = false;
-        gptPromise = sendTextToGPTAndReceiveResponse(data);
-        for await (const formatted_words of gptPromise) {
-            console.log("Sending response: ", formatted_words);
+
+        if (abortedText !== '' && abortedAudioId !== data.audioId) {
+            transcript = abortedText + "  " + data.transcript;
+            console.log("Text was aborted, so new transcript is ", transcript);
+            data.audioId = abortedAudioId;
+        } else {
+            transcript = data.transcript;
+        }
+        // message history of user with id data.audioId should be updated here
+        user_message_history.setMessage(role='user', id=data.audioId, content=transcript);
+
+        let words = "";
+        let unread_words = "";
+
+        for await (const word of sendTextToGPT(data)) {
+            words += word;
+            unread_words += word;
+            const formatted_words = {
+                "words": words,
+                "responseId": data.audioId
+            }
+
             socket.emit('response', formatted_words);
+            // message history should be updated here
+            user_message_history.setMessage(role='assistant', id=data.audioId, content=words);
+            if (shouldRead(unread_words)) {
+                console.log("Should read: ", unread_words);
+                // send unread_words to polly and we need to queue it to send to the client
+                
+
+                
+                unread_words = "";
+            }
         }
     }
 
-    const sendTextToGPTAndReceiveResponse = async (data) => {
+
+
+    const sendTextToGPT = async function*(data) {
         console.log('Sending data to GPT: ', data);
+
         const options = {
             hostname: 'localhost',
             port: 2000,
@@ -83,19 +119,12 @@ io.on('connection', async (socket) => {
                 'Content-Type': 'application/json',
             },
         };
-        // if there is aborted text and the audio id is different, then we need to send the aborted text
-        var transcript;
-        if (abortedText !== '' && abortedAudioId !== data.audioId) {
-            transcript = abortedText + "  " + data.transcript;
-            console.log("Text was aborted, so new transcript is ", transcript);
-        }
-        else {
-            transcript = data.transcript;
-        }
-
+    
+        const chunks = [];
+        const promises = [new Promise(resolve => chunks.push = resolve)];
+    
         const request = http.request(options, (response) => {
-            let words = '';
-            let unread_words = '';
+    
             response.on('data', (chunk) => {
                 if (shouldAbort) {
                     abortedText += data.transcript;
@@ -103,40 +132,36 @@ io.on('connection', async (socket) => {
                     console.log('Aborting');
                     request.destroy();
                     shouldAbort = false;
-                    words = '';
-                    unread_words = '';
                     return;
                 }
-                words += chunk;
-                unread_words += chunk;
 
-                if (shouldRead(unread_words)) {
-                    console.log('Should send to reader: ', unread_words);
-                    unread_words = '';
-                }
-                
-                formatted_words = {
-                    "words": words,
-                    "responseId": data.audioId
-                }
-                
-                yield formatted_words;
-                // socket.emit('response', formatted_words);
+                chunks.push(chunk);
+                promises.push(new Promise(resolve => chunks.push = resolve));
             });
+    
             response.on('end', () => {
-                message_history.push({ role: "user", content: `${transcript}` });
-                message_history.push({ role: "assistant", content: `${words}` });
                 console.log('End of response');
                 // now we should clear the aborted text
                 abortedText = '';
                 abortedAudioId = '';
             });
         });
+    
         request.on('error', (error) => {
-            console.error('Error when calling Brain server:', error);
+            console.error('Error when calling GPT server:', error);
         });
-        request.write(JSON.stringify({ text: transcript, message_history: message_history }));
+        
+        console.log(`GPT formatted messages: ${JSON.stringify(user_message_history.getGPTFormattedMessages())}`)
+        request.write(JSON.stringify({ text: transcript, message_history: user_message_history.getGPTFormattedMessages() }));
         request.end();
+    
+        try {
+            for (let promise of promises) {
+                yield await promise;
+            }
+        } finally {
+            request.destroy();
+        }
     }
 
     const handleStartAudio = () => {
@@ -156,13 +181,13 @@ io.on('connection', async (socket) => {
     let voiceDetected = false;
 
     let audioBuffer = []; // The buffer to store audio data
-    const bufferLength = 6; // The length of the buffer
+    const bufferLength = 2; // The length of the buffer
     let voiceCounter = 0; // The number of consecutive voice chunks
 
     let abortCounter = 0;
     let abortThreshold = 8;
 
-    const handleStreamAudio = (audioData) => {
+    const handleStreamAudioDetection = (audioData) => {
         // Append the new chunk to the buffer
         audioBuffer.push(audioData);
         // If the buffer is too large, remove the oldest chunk
@@ -231,6 +256,10 @@ io.on('connection', async (socket) => {
         }).catch(console.error);
     }
 
+    const handleStreamAudioButton = (audioData) => {
+        // we need to check against a button if its held down or not
+    }
+
     const handleEndAudio = () => {
         console.log('End of Audio for user:' + userID);
         // Forward command to transcription server
@@ -249,6 +278,7 @@ io.on('connection', async (socket) => {
 
         handleEndAudio();
     }
+
 });
 
 server.listen(1000, () => {
