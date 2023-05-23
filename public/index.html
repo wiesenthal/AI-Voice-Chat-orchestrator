@@ -55,11 +55,11 @@
 
   const stopRecording = async () => {
     if (audioStream) {
-      // wait 0.5 seconds before stopping the audio stream
+      // wait 0.7 seconds before stopping the audio stream
       await new Promise((resolve, reject) => {
         setTimeout(() => {
           resolve();
-        }, 500);
+        }, 700);
       });
       audioStream.getTracks()[0].stop();
       recorder.disconnect();
@@ -92,6 +92,20 @@
         if (activeLine) {
           activeLine.removeAttribute('id');
         }
+      }
+    });
+    socket.on('response', function(data) {
+      console.log(`Response: ${data}`);
+      const responseId = `response_${data.responseId}`;
+      let outputDiv = document.getElementById('output');
+      let activeLine = document.getElementById(responseId);
+      if (activeLine) {
+        activeLine.innerHTML = data.words;
+      } else {
+        let newActiveLine = document.createElement('p');
+        newActiveLine.setAttribute('id', responseId);
+        newActiveLine.innerHTML = data;
+        outputDiv.appendChild(newActiveLine);
       }
     });
   }
