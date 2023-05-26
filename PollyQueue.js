@@ -32,17 +32,6 @@ class PollyQueue {
             this.processing = true;
             const request = this.queue.shift();
             try {
-                const response = await axios({
-                    method: 'post',
-                    url: 'http://localhost:4000/text-to-speech',
-                    responseType: 'arraybuffer',  // tells axios to return the response data as a Buffer instead of a string
-                    data: {
-                      text: request.text,
-                      voice: request.voice || 'Matthew',
-                      engine: request.engine || 'standard',
-                    },
-                  });
-                  const audioStream = Buffer.from(response.data, 'binary');
 
                 const input = {
                     Engine: request.engine || "neural",
@@ -53,14 +42,13 @@ class PollyQueue {
                     VoiceId: request.voice || "Salli"
                 }
 
-                // console.log(`Sending Request: ${JSON.stringify(input)}`)
-                // const data = await client.send(new SynthesizeSpeechCommand(input));
+                const data = await client.send(new SynthesizeSpeechCommand(input));
                   
-                // let audioStream = [];
-                // for await (const chunk of data.AudioStream) {
-                //     audioStream.push(chunk);
-                // }
-                // audioStream = Buffer.concat(audioStream);
+                let audioStream = [];
+                for await (const chunk of data.AudioStream) {
+                    audioStream.push(chunk);
+                }
+                audioStream = Buffer.concat(audioStream);
 
                 this.completedAudio[request.countId] = audioStream;
                 this.sendNextCompletedAudio();
