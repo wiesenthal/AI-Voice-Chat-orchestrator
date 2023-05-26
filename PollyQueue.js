@@ -1,0 +1,89 @@
+// require events module
+const events = require('events');
+const axios = require('axios');
+
+const { PollyClient, SynthesizeSpeechCommand } = require("@aws-sdk/client-polly");
+
+const client = new PollyClient();
+
+DEFAULT_VOICE = "Matthew";
+
+// Polly Queue helper
+class PollyQueue {
+    constructor() {
+        this.queue = [];
+        this.processing = false;
+        this.eventEmitter = new events.EventEmitter();
+        this.completedAudio = {};  // Stores completed audio streams by ID
+        this.nextCountId = 1;  // The ID of the next audio stream to emit
+        this.totalIdCount = 1; // The total number of audio streams emitted
+    }
+
+    enqueue(request) {
+        request.countId = this.totalIdCount++;
+        this.queue.push(request);
+        if (!this.processing) {
+            this.processNext();
+        }
+    }
+
+    async processNext() {
+        if (this.queue.length > 0) {
+            this.processing = true;
+            const request = this.queue.shift();
+            try {
+                const response = await axios({
+                    method: 'post',
+                    url: 'http://localhost:4000/text-to-speech',
+                    responseType: 'arraybuffer',  // tells axios to return the response data as a Buffer instead of a string
+                    data: {
+                      text: request.text,
+                      voice: request.voice || 'Matthew',
+                      engine: request.engine || 'standard',
+                    },
+                  });
+                  const audioStream = Buffer.from(response.data, 'binary');
+
+                const input = {
+                    Engine: request.engine || "neural",
+                    OutputFormat: "mp3",
+                    SampleRate: "16000",
+                    Text: request.text,
+                    TextType: "text",
+                    VoiceId: request.voice || "Salli"
+                }
+
+                // console.log(`Sending Request: ${JSON.stringify(input)}`)
+                // const data = await client.send(new SynthesizeSpeechCommand(input));
+                  
+                // let audioStream = [];
+                // for await (const chunk of data.AudioStream) {
+                //     audioStream.push(chunk);
+                // }
+                // audioStream = Buffer.concat(audioStream);
+
+                this.completedAudio[request.countId] = audioStream;
+                this.sendNextCompletedAudio();
+            } catch (err) {
+                console.log('Error in Polly request:', err);
+            }
+            this.processing = false;
+            process.nextTick(() => this.processNext());
+        }
+    }
+
+    sendNextCompletedAudio() {
+        while (this.completedAudio[this.nextCountId]) {
+            const audioStream = this.completedAudio[this.nextCountId];
+            delete this.completedAudio[this.nextCountId];
+
+            this.eventEmitter.emit('audioData', { audioStream, id: this.nextCountId });
+            this.nextCountId++;
+        }
+    }
+
+    onAudioData(listener) {
+        this.eventEmitter.on('audioData', listener);
+    }
+}
+exports.default = PollyQueue;

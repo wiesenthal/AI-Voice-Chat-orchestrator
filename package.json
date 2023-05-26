@@ -10,7 +10,10 @@
   "author": "",
   "license": "UNLICENSED",
   "dependencies": {
+    "@aws-sdk/client-polly": "^3.338.0",
+    "@deepgram/sdk": "^2.1.1",
     "axios": "^1.4.0",
+    "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "http": "^0.0.1-security",
     "node-vad": "^1.1.4",
@@ -19,6 +22,7 @@
     "stream": "^0.0.2",
     "typescript": "^5.0.4",
     "uuid": "^9.0.0",
-    "uuidv4": "^6.2.13"
+    "uuidv4": "^6.2.13",
+    "wav": "^1.0.2"
   }
 }

@@ -1,23 +1,21 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
-const socketIoClient = require('socket.io-client');
-const VAD = require('node-vad');
+const fs = require('fs');
+const wav = require('wav');
 
 const { shouldRead } = require('./reader_utils.js');
-const { shouldRespond } = require('./response_utils.js');
+const { transcribe } = require('./deepgram/transcription.js');
+const { v4 } = require('uuid');
 
 const MessageHistory = require('./MessageHistory').default;
+const PollyQueue = require('./PollyQueue').default;
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
-const vad = new VAD(VAD.Mode.VERY_AGGRESSIVE, 16000, 100);
 
-const axios = require('axios');
-
-// Connecting to transcription server
-const transcriptionServerAddress = 'http://localhost:3000';
+const pollyQueue = new PollyQueue();  // Instantiate PollyQueue
 
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
@@ -28,18 +26,80 @@ let users = [];
 io.on('connection', async (socket) => {
 
     console.log('a user connected');
-    let transcriptionServer = null;
 
     const userID = socket.id;
     users.push(userID);
 
-    socket.on('startAudio', async () => {
-        console.log('Now recording for user: ' + userID);
-    });
+    let isListening = false;
+    let fileWriter = null;
+    let commandID = null;
+    let filename = null;
+
 
     socket.on('streamAudio', (audioData) => {
-        handleStreamAudioDetection(audioData);
+        // handleStreamAudioDetection(audioData);
         //handleStreamAudioButton(audioData);
+
+        // add audio data to a file
+        if (isListening) {
+            if (!fileWriter) {
+                commandID = v4();
+                filename = `audio/${userID}-${commandID}.wav`;
+                try {
+                    fileWriter = new wav.FileWriter(filename, {
+                        channels: 1,
+                        sampleRate: 16000,
+                        bitDepth: 16,
+                    });
+                }
+                catch (err) {
+                    console.log(`Error creating fileWriter: ${err}`);
+                }
+            }
+            try {
+            fileWriter.write(Buffer.from(audioData));
+            }
+            catch (err) {
+                console.log(`Error writing to file: ${err}`);
+            }
+        }
+        else {
+            if (fileWriter) {
+                try {
+                fileWriter.end();
+                }
+                catch (err) {
+                    console.log(`Error ending fileWriter: ${err}`);
+                }
+
+                // send the audio to deepgram
+                console.log(`filename: ${filename}`);
+                const audio = fs.readFileSync(filename);
+
+                const mimetype = "audio/x-wav;codec=pcm;rate=16000";
+
+                transcribe(audio, mimetype).then((response) => {
+                    handleTranscript(response, commandID);
+                }).catch((err) => {
+                    console.log(err);
+                });
+
+                // delete the file in 5 seconds
+                setTimeout((fname) => {
+                    fs.unlink(fname, (err) => {
+                        if (err) {
+                            console.log(`Error deleting file: ${err}`);
+                        }
+                    }
+                    );
+                }
+                , 5000, fname=filename);
+
+                fileWriter = null;
+                filename = null;
+                commandID = null;
+            }
+        }
     });
 
     socket.on('endAudio', () => {
@@ -50,65 +110,72 @@ io.on('connection', async (socket) => {
         handleAudioDisconnect();
     });
 
+    socket.on('listen', () => {
+        console.log('Listening for user: ' + userID);
+        isListening = true;
+    });
+
+    socket.on('stopListening', () => {
+        console.log('Stopped listening for user: ' + userID);
+        isListening = false;
+    });
+
+    // Listen for completed audio streams from PollyQueue
+    pollyQueue.onAudioData(({ audioStream, id }) => {
+        console.log('Sending audio data to client:', id);
+        // save the audio stream to a file
+
+        const base64Audio = audioStream.toString('base64');
+
+        socket.emit('audioData', { audioStream: base64Audio, id });
+    });
+
+    socket.on('startAudio', async () => {
+        console.log('Now recording for user: ' + userID);
+    });
+
     // instantiate message history
     let user_message_history = new MessageHistory(userID);
 
-    let abortedText = '';
-    let shouldAbort = false;
-    let abortedAudioId = '';
 
-    const handleTranscript = async (data) => {
-        // if new data is sent in, we need to be able to abort the gptPromise.
-        // we should change how it works from that function to doing everything, instead it should
-        // make the request and we can start streaming from it
-        // then we can handle what we do with the response stream.
-        shouldAbort = true;
-
-        console.log("Should respond: ", shouldRespond(data));
-        if (!shouldRespond(data)) {
-            return;
-        }
-        shouldAbort = false;
-
-        if (abortedText !== '' && abortedAudioId !== data.audioId) {
-            transcript = abortedText + "  " + data.transcript;
-            console.log("Text was aborted, so new transcript is ", transcript);
-            data.audioId = abortedAudioId;
-        } else {
-            transcript = data.transcript;
-        }
-        // message history of user with id data.audioId should be updated here
-        user_message_history.setMessage(role='user', id=data.audioId, content=transcript);
+    const handleTranscript = async (transcript, commandID) => {
+        console.log('Transcript: ', transcript);
 
         let words = "";
         let unread_words = "";
 
-        for await (const word of sendTextToGPT(data)) {
+        // send the transcript to GPT
+        for await (const word of sendTextToGPT(transcript)) {
             words += word;
             unread_words += word;
             const formatted_words = {
                 "words": words,
-                "responseId": data.audioId
+                "responseId": commandID
             }
-
+    
             socket.emit('response', formatted_words);
             // message history should be updated here
-            user_message_history.setMessage(role='assistant', id=data.audioId, content=words);
+            user_message_history.setMessage(role = 'assistant', id = commandID, content = words);
             if (shouldRead(unread_words)) {
                 console.log("Should read: ", unread_words);
                 // send unread_words to polly and we need to queue it to send to the client
-                
-
-                
+    
+                // we should monolithify Polly
+                pollyQueue.enqueue({
+                    text: unread_words,
+                    voice: 'Amy',  // Set your preferred voice ID
+                    engine: 'standard',
+                    audioId: commandID
+                });
+    
                 unread_words = "";
             }
         }
+
     }
 
-
-
-    const sendTextToGPT = async function*(data) {
-        console.log('Sending data to GPT: ', data);
+    const sendTextToGPT = async function* (transcript) {
+        console.log('Sending data to GPT: ', transcript);
 
         const options = {
             hostname: 'localhost',
@@ -119,42 +186,30 @@ io.on('connection', async (socket) => {
                 'Content-Type': 'application/json',
             },
         };
-    
+
         const chunks = [];
         const promises = [new Promise(resolve => chunks.push = resolve)];
-    
-        const request = http.request(options, (response) => {
-    
-            response.on('data', (chunk) => {
-                if (shouldAbort) {
-                    abortedText += data.transcript;
-                    abortedAudioId = data.audioId;
-                    console.log('Aborting');
-                    request.destroy();
-                    shouldAbort = false;
-                    return;
-                }
 
+        const request = http.request(options, (response) => {
+
+            response.on('data', (chunk) => {
                 chunks.push(chunk);
                 promises.push(new Promise(resolve => chunks.push = resolve));
             });
-    
+
             response.on('end', () => {
                 console.log('End of response');
-                // now we should clear the aborted text
-                abortedText = '';
-                abortedAudioId = '';
             });
         });
-    
+
         request.on('error', (error) => {
             console.error('Error when calling GPT server:', error);
         });
-        
+
         console.log(`GPT formatted messages: ${JSON.stringify(user_message_history.getGPTFormattedMessages())}`)
         request.write(JSON.stringify({ text: transcript, message_history: user_message_history.getGPTFormattedMessages() }));
         request.end();
-    
+
         try {
             for (let promise of promises) {
                 yield await promise;
@@ -164,119 +219,9 @@ io.on('connection', async (socket) => {
         }
     }
 
-    const handleStartAudio = () => {
-        console.log('Start of Audio for user:' + userID);
-
-        transcriptionServer = socketIoClient(transcriptionServerAddress);
-
-        // Receive transcript from transcription server and forward it to client
-        transcriptionServer.on('transcript', (data) => {
-            handleTranscript(data);
-        });
-        // Forward command to transcription server
-        transcriptionServer.emit('startAudio');
-    }
-
-    let silenceCounter = 0;
-    let voiceDetected = false;
-
-    let audioBuffer = []; // The buffer to store audio data
-    const bufferLength = 2; // The length of the buffer
-    let voiceCounter = 0; // The number of consecutive voice chunks
-
-    let abortCounter = 0;
-    let abortThreshold = 8;
-
-    const handleStreamAudioDetection = (audioData) => {
-        // Append the new chunk to the buffer
-        audioBuffer.push(audioData);
-        // If the buffer is too large, remove the oldest chunk
-        if (audioBuffer.length > bufferLength) {
-            audioBuffer.shift();
-        }
-
-
-        const maxSilenceCount = 30;
-        const desiredSampleRate = 16000;
-            
-        vad.processAudio(audioData, desiredSampleRate).then(res => {
-            switch (res) {
-                case VAD.Event.ERROR:
-                    console.error("VAD Error", res);
-                    break;
-                case VAD.Event.SILENCE:
-                    // console.log("VAD Silence");
-                    silenceCounter++;
-                    voiceCounter = 0;
-                    if (silenceCounter >= maxSilenceCount && voiceDetected) {
-                        handleEndAudio();
-                        voiceDetected = false;
-                        silenceCounter = 0;
-                    }
-                    else if (transcriptionServer && voiceDetected) {
-                        transcriptionServer.emit('streamAudio', audioData);
-                    }
-                    break;
-                case VAD.Event.VOICE:
-                    // console.log("VAD Voice detected");
-                    voiceCounter++;
-                    abortCounter ++;
-                    if (voiceCounter >= audioBuffer.length) {
-                        voiceDetected = true;
-                        silenceCounter = 0;
-                    }
-                    if (abortCounter >= abortThreshold) {
-                        
-                        abortCounter = 0;
-                        shouldAbort = true;
-                    }
-                    if (voiceDetected) {
-                        if (!transcriptionServer) { // Added this block
-                            handleStartAudio();
-                            // Send all chunks in the buffer to the transcription server
-                            
-                        }
-                        if (audioBuffer.length > 1) {
-                            audioBuffer.forEach(chunk => transcriptionServer.emit('streamAudio', chunk));
-                            audioBuffer = []; // Clear the buffer
-                        }
-                        else if (audioBuffer.length == 1) {
-                            transcriptionServer.emit('streamAudio', audioData);
-                            audioBuffer = []; // Clear the buffer
-                        }
-                        else {
-                            console.warn("VAD Voice detected, but no audio data");
-                        }
-                    }
-                    break;
-                default:
-                    console.warn("VAD Unknown event", res);
-                    break;
-            }
-        }).catch(console.error);
-    }
-
-    const handleStreamAudioButton = (audioData) => {
-        // we need to check against a button if its held down or not
-    }
-
-    const handleEndAudio = () => {
-        console.log('End of Audio for user:' + userID);
-        // Forward command to transcription server
-        if (transcriptionServer) {
-            transcriptionServer.emit('endAudio');
-            transcriptionServer.disconnect();
-            transcriptionServer = null;
-        }
-        else
-            console.warn('Tried to end audio, but transcription server not connected');
-    }
-
     const handleAudioDisconnect = () => {
         console.log('user disconnected');
         users = users.filter((user) => user !== userID);
-
-        handleEndAudio();
     }
 
 });

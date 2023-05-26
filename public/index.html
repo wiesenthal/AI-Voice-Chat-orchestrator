@@ -1,115 +1,147 @@
 <!DOCTYPE html>
 <html>
+
 <body>
 
-<button onclick="startRecording()">Start Recording</button>
-<button onclick="stopRecording()">Stop Recording</button>
-<div id="output"><p id="activeLine"></p></div>
+  <button onclick="startRecording()">Start Recording</button>
+  <button onclick="stopRecording()">Stop Recording</button>
+</br>
+  <button id="listen" style="width: 200px; height: 200px;"><h1>Listen</h1></button>
+  <div id="output">
+    <p id="activeLine"></p>
+  </div>
 
-<script src="/socket.io/socket.io.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
 
-<script>
-  var socket = io('http://localhost:1000');
-  var audioStream;
-  var recorder;
-  var desiredSampleRate = 16000;
-  
-  const startRecording = async () => {
-    var audioContext = new (window.AudioContext || window.webkitAudioContext)({sampleRate: desiredSampleRate});
-    //console.log(navigator.mediaDevices.getUserMedia( {audio: true} ));
-    // navigator.getUserMedia = navigator.mediaDevices.getUserMedia( {audio: true} );
-    //navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia || navigator.getUserMedia;
-    await new Promise((resolve, reject) => {
-      let stream;
-      try {
-        stream = navigator.mediaDevices.getUserMedia({audio: true});
-      }
-      catch (e) {
-        console.log('Error getting audio stream');
-        reject();
-      }
-      resolve(stream);
-    }).then((stream) => {
-      audioStream = stream;
-      const audioInput = audioContext.createMediaStreamSource(stream);
-      const bufferSize = 2048;
-      recorder = audioContext.createScriptProcessor(bufferSize, 1, 1);
+  <script>
+    var socket = io('http://localhost:1000');
+    var audioStream;
+    var recorder;
+    var desiredSampleRate = 16000;
 
-      recorder.onaudioprocess = (e) => {
-        let inputBuffer = e.inputBuffer;
-        let inputData = inputBuffer.getChannelData(0);
-        let PCM32fSamples = new Float32Array(inputData);
-        let PCM16iSamples = PCM32fSamples.map(x => Math.max(-32768, Math.min(32767, Math.floor(x * 32767))));
-        if (desiredSampleRate != audioContext.sampleRate) {
-          // This code does not seem to work
-          console.warn('The desired sample rate is different from the audio context sample rate');
-        }
-        sendToServer(new Int16Array(PCM16iSamples).buffer);
-      };
+    var audioContext;
 
-      audioInput.connect(recorder);
-      recorder.connect(audioContext.destination);
-      socket.emit('startAudio');
+    // add event listener to listen button on press and release
+    var listenButton = document.getElementById('listen');
+    listenButton.addEventListener('mousedown', function () {
+      socket.emit('listen');
     });
-  }
+    listenButton.addEventListener('mouseup', function () {
+      socket.emit('stopListening');
+    });
 
-  const stopRecording = async () => {
-    if (audioStream) {
-      // wait 0.7 seconds before stopping the audio stream
+    const startRecording = async () => {
+      var audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: desiredSampleRate });
+
       await new Promise((resolve, reject) => {
-        setTimeout(() => {
-          resolve();
-        }, 700);
-      });
-      audioStream.getTracks()[0].stop();
-      recorder.disconnect();
-      socket.emit('endAudio');
-      console.log('Audio stream stopped');
-    }
-  }
+        let stream;
+        try {
+          stream = navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+        catch (e) {
+          console.log('Error getting audio stream');
+          reject();
+        }
+        resolve(stream);
+      }).then((stream) => {
+        audioStream = stream;
+        const audioInput = audioContext.createMediaStreamSource(stream);
+        const bufferSize = 2048;
+        recorder = audioContext.createScriptProcessor(bufferSize, 1, 1);
 
-  const sendToServer = (buffer) => {
-    socket.emit('streamAudio', buffer);
-    socket.on('transcript', function(data) {
-      console.log(`Transcript: ${data.transcript}, Final: ${data.final}, Speaker: ${data.speaker}`);
-      let outputDiv = document.getElementById('output');
-      if (!data.final) {
-        // if the transcript is not final, update the active line
-        // if there is an active line, update it, otherwise create a new one
-        let activeLine = document.getElementById('activeLine');
+        recorder.onaudioprocess = (e) => {
+          let inputBuffer = e.inputBuffer;
+          let inputData = inputBuffer.getChannelData(0);
+          let PCM32fSamples = new Float32Array(inputData);
+          let PCM16iSamples = PCM32fSamples.map(x => Math.max(-32768, Math.min(32767, Math.floor(x * 32767))));
+          if (desiredSampleRate != audioContext.sampleRate) {
+            // This code does not seem to work
+            console.warn('The desired sample rate is different from the audio context sample rate');
+          }
+          sendToServer(new Int16Array(PCM16iSamples).buffer);
+        };
+
+        audioInput.connect(recorder);
+        recorder.connect(audioContext.destination);
+        socket.emit('startAudio');
+      });
+    }
+
+    const stopRecording = async () => {
+      if (audioStream) {
+        audioStream.getTracks()[0].stop();
+        recorder.disconnect();
+        socket.emit('endAudio');
+        console.log('Audio stream stopped');
+      }
+    }
+
+    const sendToServer = (buffer) => {
+      socket.emit('streamAudio', buffer);
+      socket.on('transcript', function (data) {
+        console.log(`Transcript: ${data.transcript}, Final: ${data.final}, Speaker: ${data.speaker}`);
+        let outputDiv = document.getElementById('output');
+        if (!data.final) {
+          // if the transcript is not final, update the active line
+          // if there is an active line, update it, otherwise create a new one
+          let activeLine = document.getElementById('activeLine');
+          if (activeLine) {
+            activeLine.innerHTML = data.transcript;
+          } else {
+            let newActiveLine = document.createElement('p');
+            newActiveLine.setAttribute('id', 'activeLine');
+            newActiveLine.innerHTML = data.transcript;
+            outputDiv.appendChild(newActiveLine);
+          }
+        } else {
+          // if the transcript is final, move the active line to the output div
+          // if there is no active line, do nothing
+          let activeLine = document.getElementById('activeLine');
+          if (activeLine) {
+            activeLine.removeAttribute('id');
+          }
+        }
+      });
+      socket.on('response', function (data) {
+        const responseId = `response_${data.responseId}`;
+        let outputDiv = document.getElementById('output');
+        let activeLine = document.getElementById(responseId);
         if (activeLine) {
-          activeLine.innerHTML = data.transcript;
+          activeLine.innerHTML = data.words;
         } else {
           let newActiveLine = document.createElement('p');
-          newActiveLine.setAttribute('id', 'activeLine');
-          newActiveLine.innerHTML = data.transcript;
+          newActiveLine.setAttribute('id', responseId);
+          newActiveLine.innerHTML = data;
           outputDiv.appendChild(newActiveLine);
         }
-      } else {
-        // if the transcript is final, move the active line to the output div
-        // if there is no active line, do nothing
-        let activeLine = document.getElementById('activeLine');
-        if (activeLine) {
-          activeLine.removeAttribute('id');
-        }
+      });
+
+    }
+
+    let audioQueue = [];
+
+    socket.on('audioData', function (data) {
+      let audio = new Audio('data:audio/mp3;base64,' + data.audioStream);
+      audioQueue.push(audio);
+      if (audioQueue.length === 1) {
+        playAudio();
       }
     });
-    socket.on('response', function(data) {
-      console.log(`Response: ${data}`);
-      const responseId = `response_${data.responseId}`;
-      let outputDiv = document.getElementById('output');
-      let activeLine = document.getElementById(responseId);
-      if (activeLine) {
-        activeLine.innerHTML = data.words;
-      } else {
-        let newActiveLine = document.createElement('p');
-        newActiveLine.setAttribute('id', responseId);
-        newActiveLine.innerHTML = data;
-        outputDiv.appendChild(newActiveLine);
+
+    function playAudio() {
+      if (audioQueue.length > 0) {
+        let audio = audioQueue[0];
+        audio.play();
+        audio.onended = () => {
+          audioQueue.shift();
+          playAudio();
+        };
       }
-    });
-  }
-</script>
+    }
+
+  </script>
 
 </body>
+
 </html>
