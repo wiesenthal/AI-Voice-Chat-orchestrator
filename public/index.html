@@ -122,6 +122,7 @@
     let audioQueue = [];
 
     socket.on('audioData', function (data) {
+      // TODO: change this from taking in audio stream chunks
       let audio = new Audio('data:audio/mp3;base64,' + data.audioStream);
       audioQueue.push(audio);
       if (audioQueue.length === 1) {

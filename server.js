@@ -17,6 +17,10 @@ const io = socketIo(server);
 
 const pollyQueue = new PollyQueue();  // Instantiate PollyQueue
 
+const runningLocally = false;
+const brainHostname = 'neohumanbrainresponsegenerator.us-west-1.elasticbeanstalk.com';
+const brainPort = 8080;
+
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
 });
@@ -57,7 +61,7 @@ io.on('connection', async (socket) => {
                 }
             }
             try {
-            fileWriter.write(Buffer.from(audioData));
+                fileWriter.write(Buffer.from(audioData));
             }
             catch (err) {
                 console.log(`Error writing to file: ${err}`);
@@ -66,7 +70,7 @@ io.on('connection', async (socket) => {
         else {
             if (fileWriter) {
                 try {
-                fileWriter.end();
+                    fileWriter.end();
                 }
                 catch (err) {
                     console.log(`Error ending fileWriter: ${err}`);
@@ -93,7 +97,7 @@ io.on('connection', async (socket) => {
                     }
                     );
                 }
-                , 5000, fname=filename);
+                    , 5000, fname = filename);
 
                 fileWriter = null;
                 filename = null;
@@ -152,14 +156,14 @@ io.on('connection', async (socket) => {
                 "words": words,
                 "responseId": commandID
             }
-    
+
             socket.emit('response', formatted_words);
             // message history should be updated here
             user_message_history.setMessage(role = 'assistant', id = commandID, content = words);
             if (shouldRead(unread_words)) {
                 console.log("Should read: ", unread_words);
                 // send unread_words to polly and we need to queue it to send to the client
-    
+
                 // we should monolithify Polly
                 pollyQueue.enqueue({
                     text: unread_words,
@@ -167,7 +171,7 @@ io.on('connection', async (socket) => {
                     engine: 'standard',
                     audioId: commandID
                 });
-    
+
                 unread_words = "";
             }
         }
@@ -177,7 +181,7 @@ io.on('connection', async (socket) => {
     const sendTextToGPT = async function* (transcript) {
         console.log('Sending data to GPT: ', transcript);
 
-        const options = {
+        let options = {
             hostname: 'localhost',
             port: 2000,
             path: '/ask',
@@ -185,7 +189,20 @@ io.on('connection', async (socket) => {
             headers: {
                 'Content-Type': 'application/json',
             },
-        };
+        }; 
+
+        if (!runningLocally) {
+            options = {
+                hostname: brainHostname,
+                port: brainPort,
+                path: '/ask',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            };
+        }
+
 
         const chunks = [];
         const promises = [new Promise(resolve => chunks.push = resolve)];

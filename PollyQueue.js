@@ -33,18 +33,33 @@ class PollyQueue {
             const request = this.queue.shift();
             try {
 
-                const input = {
+                const fastMode = true;
+                let input = {
                     Engine: request.engine || "neural",
                     OutputFormat: "mp3",
                     SampleRate: "16000",
                     Text: request.text,
                     TextType: "text",
                     VoiceId: request.voice || "Salli"
+                };
+
+                if (fastMode) {
+                    // wrap text with <speak> tag and add SSML prosody tag
+                    input = {
+                        Engine: request.engine || "neural",
+                        OutputFormat: "mp3",
+                        SampleRate: "16000",
+                        Text: `<speak><prosody rate="fast">${request.text}</prosody></speak>`,
+                        TextType: "ssml",
+                        VoiceId: request.voice || "Salli"
+                    }
+
                 }
 
                 const data = await client.send(new SynthesizeSpeechCommand(input));
-                  
+
                 let audioStream = [];
+                // TODO: Use a stream instead of buffering the whole thing
                 for await (const chunk of data.AudioStream) {
                     audioStream.push(chunk);
                 }
