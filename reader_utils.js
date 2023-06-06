@@ -4,6 +4,7 @@ const shouldRead = (text) => {
     // else return false
     const punctuation = [',', '.', '?', '!', ":", ";", "-", "\"", "'", ")", "]", "}", "…"];
     const lastChar = text[text.length - 1];
+
     return punctuation.includes(lastChar);
 }
 

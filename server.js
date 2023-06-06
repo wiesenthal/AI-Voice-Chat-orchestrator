@@ -3,6 +3,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const fs = require('fs');
 const wav = require('wav');
+const cors = require('cors');
 
 const { shouldRead } = require('./reader_utils.js');
 const { transcribe } = require('./deepgram/transcription.js');
@@ -12,14 +13,16 @@ const MessageHistory = require('./MessageHistory').default;
 const PollyQueue = require('./PollyQueue').default;
 
 const app = express();
+app.use(cors());
 const server = http.createServer(app);
-const io = socketIo(server);
-
-const pollyQueue = new PollyQueue();  // Instantiate PollyQueue
+const io = socketIo(server, {
+    cors: {
+        origin: '*',
+    }
+});
 
 const runningLocally = false;
 const brainHostname = 'neohumanbrainresponsegenerator.us-west-1.elasticbeanstalk.com';
-const brainPort = 8080;
 
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
@@ -28,7 +31,9 @@ app.get('/', (req, res) => {
 let users = [];
 
 io.on('connection', async (socket) => {
-
+    
+    const pollyQueue = new PollyQueue();
+    
     console.log('a user connected');
 
     const userID = socket.id;
@@ -81,9 +86,9 @@ io.on('connection', async (socket) => {
                 const audio = fs.readFileSync(filename);
 
                 const mimetype = "audio/x-wav;codec=pcm;rate=16000";
-
+                const oldCommandID = commandID;
                 transcribe(audio, mimetype).then((response) => {
-                    handleTranscript(response, commandID);
+                    handleTranscript(response, oldCommandID);
                 }).catch((err) => {
                     console.log(err);
                 });
@@ -150,6 +155,11 @@ io.on('connection', async (socket) => {
 
         // send the transcript to GPT
         for await (const word of sendTextToGPT(transcript)) {
+            if (word === null) {
+                console.log(`user message history`, user_message_history);
+                break;
+            }
+
             words += word;
             unread_words += word;
             const formatted_words = {
@@ -158,7 +168,9 @@ io.on('connection', async (socket) => {
             }
 
             socket.emit('response', formatted_words);
-            // message history should be updated here
+            
+            user_message_history.setMessage(role = 'user', id = commandID, content = transcript);
+
             user_message_history.setMessage(role = 'assistant', id = commandID, content = words);
             if (shouldRead(unread_words)) {
                 console.log("Should read: ", unread_words);
@@ -175,6 +187,8 @@ io.on('connection', async (socket) => {
                 unread_words = "";
             }
         }
+
+        
 
     }
 
@@ -194,7 +208,6 @@ io.on('connection', async (socket) => {
         if (!runningLocally) {
             options = {
                 hostname: brainHostname,
-                port: brainPort,
                 path: '/ask',
                 method: 'POST',
                 headers: {
@@ -216,6 +229,9 @@ io.on('connection', async (socket) => {
 
             response.on('end', () => {
                 console.log('End of response');
+                // push the last chunk
+                chunks.push(null);
+                promises.push(new Promise(resolve => chunks.push = resolve));
             });
         });
 
@@ -243,6 +259,7 @@ io.on('connection', async (socket) => {
 
 });
 
-server.listen(1000, () => {
-    console.log('listening on *:1000');
+const port = process.env.PORT || 1000;
+server.listen(port, () => {
+    console.log(`listening on *:${port}`);
 });

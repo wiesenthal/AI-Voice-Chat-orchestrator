@@ -4,7 +4,11 @@ const axios = require('axios');
 
 const { PollyClient, SynthesizeSpeechCommand } = require("@aws-sdk/client-polly");
 
-const client = new PollyClient();
+const client = new PollyClient(
+    {
+        region: "us-west-1"
+    }
+);
 
 DEFAULT_VOICE = "Matthew";
 
@@ -49,7 +53,7 @@ class PollyQueue {
                         Engine: request.engine || "neural",
                         OutputFormat: "mp3",
                         SampleRate: "16000",
-                        Text: `<speak><prosody rate="fast">${request.text}</prosody></speak>`,
+                        Text: `<speak><prosody rate="120%">${request.text}</prosody></speak>`,
                         TextType: "ssml",
                         VoiceId: request.voice || "Salli"
                     }
