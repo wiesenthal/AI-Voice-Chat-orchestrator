@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <html>
-
+<head>
+  <link rel="stylesheet" type="text/css" href="styles.css">
+</head>
 <body>
 
   <button onclick="startRecording()">Start Recording</button>
   <button onclick="stopRecording()">Stop Recording</button>
 </br>
-  <button id="listen" style="width: 200px; height: 200px;"><h1>Listen</h1></button>
+  <div id="listen">
+    <h1>Listen</h1>
+  </div>
   <div id="output">
     <p id="activeLine"></p>
   </div>
@@ -28,12 +32,33 @@
 
     // add event listener to listen button on press and release
     var listenButton = document.getElementById('listen');
-    listenButton.addEventListener('mousedown', function () {
+
+    listenButton.addEventListener('touchstart', function (event) {
+      event.preventDefault();
+      listenButton.classList.add('active');
       socket.emit('listen');
     });
-    listenButton.addEventListener('mouseup', function () {
+
+    listenButton.addEventListener('touchend', function () {
+      listenButton.classList.remove('active');
       socket.emit('stopListening');
     });
+
+    document.addEventListener('keydown', function (event) {
+      if (event.code === 'Space') {
+        event.preventDefault();
+        listenButton.classList.add('active');
+        socket.emit('listen');
+      }
+    });
+
+    document.addEventListener('keyup', function (event) {
+      if (event.code === 'Space') {
+        listenButton.classList.remove('active');
+        socket.emit('stopListening');
+      }
+    });
+
 
 
     const startRecording = async () => {
