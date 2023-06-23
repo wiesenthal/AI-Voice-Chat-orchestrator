@@ -1,0 +1,2 @@
+cd client && npm run build && cd ..
+zip ../orchestrator.zip -r * .[^.]*
