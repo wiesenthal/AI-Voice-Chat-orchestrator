@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import './App.css';
+import ListenButton from './components/ListenButton';
 
 const runningLocally = false;
 const localAddress = "http://localhost:1000";
@@ -143,15 +144,11 @@ function App() {
     socket.current.emit('streamAudio', buffer);
   }
 
-  console.log(responses);
-
   return (
     <div className="App">
       <button onClick={startRecording}>Start Recording</button>
       <button onClick={stopRecording}>Stop Recording</button>
-      <div id="listen" onMouseDown={startListening} onMouseUp={stopListening}>
-        <h1>Listen</h1>
-      </div>
+      <ListenButton onStartListening={startListening} onStopListening={stopListening} />
       <div id="output">
         {activeLine && <p>{activeLine}</p>}
         {transcripts.map((transcript, index) => (
