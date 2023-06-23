@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const socketIo = require('socket.io');
 const fs = require('fs');
 const wav = require('wav');
@@ -21,11 +22,14 @@ const io = socketIo(server, {
     }
 });
 
-const runningLocally = false;
+const brainRunningLocally = false;
 const brainHostname = 'neohumanbrainresponsegenerator.us-west-1.elasticbeanstalk.com';
 
+app.use(express.static(path.join(__dirname, 'frontend/build')));
+
 app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/public/index.html');
+    // res.sendFile(__dirname + '/public/index.html');
+    res.sendFile(path.join(__dirname + '/frontend/build/index.html'));
 });
 
 let users = [];
@@ -46,9 +50,6 @@ io.on('connection', async (socket) => {
 
 
     socket.on('streamAudio', (audioData) => {
-        // handleStreamAudioDetection(audioData);
-        //handleStreamAudioButton(audioData);
-
         // add audio data to a file
         if (isListening) {
             if (!fileWriter) {
@@ -93,7 +94,7 @@ io.on('connection', async (socket) => {
                     console.log(err);
                 });
 
-                // delete the file in 5 seconds
+                delete the file in 5 seconds
                 setTimeout((fname) => {
                     fs.unlink(fname, (err) => {
                         if (err) {
@@ -205,7 +206,7 @@ io.on('connection', async (socket) => {
             },
         }; 
 
-        if (!runningLocally) {
+        if (!brainRunningLocally) {
             options = {
                 hostname: brainHostname,
                 path: '/ask',
