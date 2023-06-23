@@ -94,7 +94,6 @@ io.on('connection', async (socket) => {
                     console.log(err);
                 });
 
-                delete the file in 5 seconds
                 setTimeout((fname) => {
                     fs.unlink(fname, (err) => {
                         if (err) {
