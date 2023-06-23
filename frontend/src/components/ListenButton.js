@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 
+import './ListenButton.css';
+
+
 const ListenButton = ({ onStartListening, onStopListening }) => {
   const [isActive, setIsActive] = useState(false);
 
