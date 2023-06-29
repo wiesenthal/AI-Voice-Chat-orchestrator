@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import ListenButton from './ListenButton';
 
-const runningLocally = false;
+const runningLocally = true;
 const localAddress = "http://localhost:1000";
 const remoteAddress = "https://www.personalwaifu.com";
 
-function TalkToIt() {
+const TalkToIt = ({user}) => {
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [activeLine, setActiveLine] = useState('');
   const [transcripts, setTranscripts] = useState([]);
@@ -19,7 +19,13 @@ function TalkToIt() {
 
   useEffect(() => {
 
+    // this socket needs to be associated with the user id
     socket.current = io(runningLocally ? localAddress : remoteAddress);
+
+    socket.current.on('connect', () => {
+      console.log('Connected to server');
+      socket.current.emit('join', { user: user });
+    });
 
     // THIS IS NOT BEING USED
     socket.current.on('transcript', (data) => {

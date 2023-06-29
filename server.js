@@ -1,20 +1,25 @@
 const express = require('express');
+const session = require('express-session');
 const http = require('http');
 const path = require('path');
 const socketIo = require('socket.io');
 const fs = require('fs');
 const wav = require('wav');
 const cors = require('cors');
-
-const { shouldRead } = require('./reader_utils.js');
-const { transcribe } = require('./deepgram/transcription.js');
 const { v4 } = require('uuid');
 
-const MessageHistory = require('./MessageHistory').default;
-const PollyQueue = require('./PollyQueue').default;
+require('dotenv').config();
+
+const { shouldRead } = require('./utils/reader_utils.js');
+const { transcribe } = require('./deepgram/transcription.js');
+const { authenticateJWT } = require('./utils/authentication.js');
+const MessageHistory = require('./utils/MessageHistory.js').default;
+const PollyQueue = require('./utils/PollyQueue.js').default;
 
 const app = express();
 app.use(cors());
+app.use(express.json());
+
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
@@ -25,11 +30,45 @@ const io = socketIo(server, {
 const brainRunningLocally = false;
 const brainHostname = 'neohumanbrainresponsegenerator.us-west-1.elasticbeanstalk.com';
 
+// connect to MySQL database
+
 app.use(express.static(path.join(__dirname, 'frontend/build')));
+
+app.use(session({
+    secret: process.env.SESSION_SECRET_KEY,  // A secret string used to sign the session ID cookie
+    resave: false,  // Don't save session if unmodified
+    saveUninitialized: false,  // Don't create session until something is stored
+    cookie: { secure: true, httpOnly: true, sameSite: true }  // Cookie options
+}));
+
 
 app.get('/', (req, res) => {
     // res.sendFile(__dirname + '/public/index.html');
     res.sendFile(path.join(__dirname + '/frontend/build/index.html'));
+});
+
+app.get('/google-client-id', (req, res) => {
+    res.json({"client_id": process.env.GOOGLE_CLIENT_ID});
+});
+
+app.post('/login', (req, res) => {
+    // Verify user credentials (or third-party token)
+    console.log(req.body);
+    authenticateJWT(req.body.token).then((payload) => {
+        console.log(`User logged in: ${JSON.stringify(payload)}`);
+        // get user from database (or create new user)
+        let userID = payload.sub;
+        let email = payload.email;
+        // test connection to database
+
+
+        // If credentials are valid:
+        req.session.userId = payload.sub;  // Save something to session
+        res.send({ success: true });
+    }).catch((err) => {
+        console.log(err);
+        res.status(401).send({ success: false });
+    });
 });
 
 let users = [];
@@ -40,21 +79,28 @@ io.on('connection', async (socket) => {
     
     console.log('a user connected');
 
-    const userID = socket.id;
-    users.push(userID);
+    const connectionID = socket.id;
+    users.push(connectionID);
 
     let isListening = false;
     let fileWriter = null;
     let commandID = null;
     let filename = null;
 
+    let user = null;
+
+    socket.on('join', (data) => {
+        console.log(`User joined: ${JSON.stringify(data.user)}`);
+
+        user = data.user;
+    });
 
     socket.on('streamAudio', (audioData) => {
         // add audio data to a file
         if (isListening) {
             if (!fileWriter) {
                 commandID = v4();
-                filename = `audio/${userID}-${commandID}.wav`;
+                filename = `audio/${connectionID}-${commandID}.wav`;
                 try {
                     fileWriter = new wav.FileWriter(filename, {
                         channels: 1,
@@ -120,12 +166,12 @@ io.on('connection', async (socket) => {
     });
 
     socket.on('listen', () => {
-        console.log('Listening for user: ' + userID);
+        console.log('Listening for user: ' + connectionID);
         isListening = true;
     });
 
     socket.on('stopListening', () => {
-        console.log('Stopped listening for user: ' + userID);
+        console.log('Stopped listening for user: ' + connectionID);
         isListening = false;
     });
 
@@ -140,11 +186,11 @@ io.on('connection', async (socket) => {
     });
 
     socket.on('startAudio', async () => {
-        console.log('Now recording for user: ' + userID);
+        console.log('Now recording for user: ' + connectionID);
     });
 
     // instantiate message history
-    let user_message_history = new MessageHistory(userID);
+    let user_message_history = new MessageHistory(connectionID);
 
 
     const handleTranscript = async (transcript, commandID) => {
@@ -254,7 +300,7 @@ io.on('connection', async (socket) => {
 
     const handleAudioDisconnect = () => {
         console.log('user disconnected');
-        users = users.filter((user) => user !== userID);
+        users = users.filter((user) => user !== connectionID);
     }
 
 });

@@ -12,10 +12,12 @@
   "dependencies": {
     "@aws-sdk/client-polly": "^3.338.0",
     "@deepgram/sdk": "^2.1.1",
+    "@react-oauth/google": "^0.11.0",
     "axios": "^1.4.0",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
+    "google-auth-library": "^8.8.0",
     "http": "^0.0.1-security",
     "node-vad": "^1.1.4",
     "socket.io": "^4.6.1",
