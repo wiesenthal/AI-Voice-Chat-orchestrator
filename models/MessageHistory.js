@@ -1,6 +1,4 @@
-"use strict";
 // This class should store and manage the message history for the orchestrator
-Object.defineProperty(exports, "__esModule", { value: true });
 class MessageHistory {
     constructor() {
         this.message_history = [];
@@ -22,4 +20,5 @@ class MessageHistory {
         return gpt_formatted_messages;
     }
 }
-exports.default = MessageHistory;
+
+export default MessageHistory;

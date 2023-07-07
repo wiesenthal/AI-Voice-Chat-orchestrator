@@ -1,10 +1,12 @@
-require('dotenv').config();
-const { Deepgram } = require("@deepgram/sdk");
+import dotenv from 'dotenv';
+dotenv.config();
+import pkg from '@deepgram/sdk';
+const { Deepgram } = pkg;
 const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
 
 const deepgram = new Deepgram(deepgramApiKey);
 
-const transcribe = async (audioBuffer, mimetype) => {
+export const transcribe = async (audioBuffer, mimetype) => {
     try {
         const source = {
             buffer: audioBuffer,
@@ -20,6 +22,4 @@ const transcribe = async (audioBuffer, mimetype) => {
     } catch (err) {
         console.log(err);
     }
-}
-
-exports.transcribe = transcribe;
+};

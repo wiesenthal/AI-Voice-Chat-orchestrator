@@ -1,38 +1,46 @@
-const express = require('express');
-const session = require('express-session');
-const http = require('http');
-const path = require('path');
-const socketIo = require('socket.io');
-const fs = require('fs');
-const wav = require('wav');
-const cors = require('cors');
-const { v4 } = require('uuid');
+import express, { json, static as expressStatic } from 'express';
+import session from 'express-session';
+import { createServer, request as _request } from 'http';
+import { join } from 'path';
+import { Server } from "socket.io";
+import { readFileSync, unlink } from 'fs';
+import { FileWriter } from 'wav';
+import cors from 'cors';
+import { v4 } from 'uuid';
 
-require('dotenv').config();
+import dotenv from 'dotenv';
+dotenv.config();
 
-const { shouldRead } = require('./utils/reader_utils.js');
-const { transcribe } = require('./deepgram/transcription.js');
-const { authenticateJWT } = require('./utils/authentication.js');
-const MessageHistory = require('./utils/MessageHistory.js').default;
-const PollyQueue = require('./utils/PollyQueue.js').default;
+import { shouldRead } from './utils/readerUtils.js';
+import { transcribe } from './services/deepgramTranscription.js';
+import { authenticateJWT } from './services/authentication.js';
+import { dbQueryPool } from './services/database.js';
+import MessageHistory from './models/MessageHistory.js';
+import PollyQueue from './models/PollyQueue.js';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(json());
 
-const server = http.createServer(app);
-const io = socketIo(server, {
+const server = createServer(app);
+
+const io = new Server(server, {
     cors: {
         origin: '*',
+        methods: ['GET', 'POST']
     }
 });
 
-const brainRunningLocally = false;
+const brainRunningLocally = true;
 const brainHostname = 'neohumanbrainresponsegenerator.us-west-1.elasticbeanstalk.com';
 
-// connect to MySQL database
-
-app.use(express.static(path.join(__dirname, 'frontend/build')));
+app.use(expressStatic(join(__dirname, 'frontend/build')));
 
 app.use(session({
     secret: process.env.SESSION_SECRET_KEY,  // A secret string used to sign the session ID cookie
@@ -41,34 +49,37 @@ app.use(session({
     cookie: { secure: true, httpOnly: true, sameSite: true }  // Cookie options
 }));
 
-
 app.get('/', (req, res) => {
-    // res.sendFile(__dirname + '/public/index.html');
-    res.sendFile(path.join(__dirname + '/frontend/build/index.html'));
+    res.sendFile(join(__dirname + '/frontend/build/index.html'));
 });
 
 app.get('/google-client-id', (req, res) => {
     res.json({"client_id": process.env.GOOGLE_CLIENT_ID});
 });
 
-app.post('/login', (req, res) => {
-    // Verify user credentials (or third-party token)
-    console.log(req.body);
-    authenticateJWT(req.body.token).then((payload) => {
+app.post('/login', async (req, res) => {
+    try {
+        const payload = await authenticateJWT(req.body.token);
         console.log(`User logged in: ${JSON.stringify(payload)}`);
         // get user from database (or create new user)
         let userID = payload.sub;
         let email = payload.email;
         // test connection to database
-
+        
+        try {
+            const [rows] = await dbQueryPool('SELECT 1');
+            console.log(`Successfully made database query. Rows: ${JSON.stringify(rows)}`);
+        } catch(err) {
+            console.log(err);
+        }
 
         // If credentials are valid:
         req.session.userId = payload.sub;  // Save something to session
         res.send({ success: true });
-    }).catch((err) => {
+    } catch (err) {
         console.log(err);
         res.status(401).send({ success: false });
-    });
+    }
 });
 
 let users = [];
@@ -89,6 +100,7 @@ io.on('connection', async (socket) => {
 
     let user = null;
 
+    // We shouldn't need this with session cookies
     socket.on('join', (data) => {
         console.log(`User joined: ${JSON.stringify(data.user)}`);
 
@@ -100,9 +112,9 @@ io.on('connection', async (socket) => {
         if (isListening) {
             if (!fileWriter) {
                 commandID = v4();
-                filename = `audio/${connectionID}-${commandID}.wav`;
+                filename = `audioFiles/${connectionID}-${commandID}.wav`;
                 try {
-                    fileWriter = new wav.FileWriter(filename, {
+                    fileWriter = new FileWriter(filename, {
                         channels: 1,
                         sampleRate: 16000,
                         bitDepth: 16,
@@ -130,7 +142,7 @@ io.on('connection', async (socket) => {
 
                 // send the audio to deepgram
                 console.log(`filename: ${filename}`);
-                const audio = fs.readFileSync(filename);
+                const audio = readFileSync(filename);
 
                 const mimetype = "audio/x-wav;codec=pcm;rate=16000";
                 const oldCommandID = commandID;
@@ -141,24 +153,20 @@ io.on('connection', async (socket) => {
                 });
 
                 setTimeout((fname) => {
-                    fs.unlink(fname, (err) => {
+                    unlink(fname, (err) => {
                         if (err) {
                             console.log(`Error deleting file: ${err}`);
                         }
                     }
                     );
                 }
-                    , 5000, fname = filename);
+                    , 5000, filename);
 
                 fileWriter = null;
                 filename = null;
                 commandID = null;
             }
         }
-    });
-
-    socket.on('endAudio', () => {
-        handleEndAudio();
     });
 
     socket.on('disconnect', () => {
@@ -215,9 +223,9 @@ io.on('connection', async (socket) => {
 
             socket.emit('response', formatted_words);
             
-            user_message_history.setMessage(role = 'user', id = commandID, content = transcript);
-
-            user_message_history.setMessage(role = 'assistant', id = commandID, content = words);
+            user_message_history.setMessage('user', commandID, transcript);
+            user_message_history.setMessage('assistant', commandID, words);
+            
             if (shouldRead(unread_words)) {
                 console.log("Should read: ", unread_words);
                 // send unread_words to polly and we need to queue it to send to the client
@@ -266,7 +274,7 @@ io.on('connection', async (socket) => {
         const chunks = [];
         const promises = [new Promise(resolve => chunks.push = resolve)];
 
-        const request = http.request(options, (response) => {
+        const request = _request(options, (response) => {
 
             response.on('data', (chunk) => {
                 chunks.push(chunk);

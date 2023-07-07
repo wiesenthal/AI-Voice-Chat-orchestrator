@@ -1,8 +1,7 @@
 // require events module
-const events = require('events');
-const axios = require('axios');
+import { EventEmitter } from 'events';
 
-const { PollyClient, SynthesizeSpeechCommand } = require("@aws-sdk/client-polly");
+import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
 
 const client = new PollyClient(
     {
@@ -10,14 +9,14 @@ const client = new PollyClient(
     }
 );
 
-DEFAULT_VOICE = "Matthew";
+const DEFAULT_VOICE = "Matthew";
 
 // Polly Queue helper
 class PollyQueue {
     constructor() {
         this.queue = [];
         this.processing = false;
-        this.eventEmitter = new events.EventEmitter();
+        this.eventEmitter = new EventEmitter();
         this.completedAudio = {};  // Stores completed audio streams by ID
         this.nextCountId = 1;  // The ID of the next audio stream to emit
         this.totalIdCount = 1; // The total number of audio streams emitted
@@ -93,4 +92,5 @@ class PollyQueue {
         this.eventEmitter.on('audioData', listener);
     }
 }
-exports.default = PollyQueue;
+
+export default PollyQueue;

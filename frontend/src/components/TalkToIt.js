@@ -21,21 +21,11 @@ const TalkToIt = ({user}) => {
 
     // this socket needs to be associated with the user id
     socket.current = io(runningLocally ? localAddress : remoteAddress);
-
+  
+    // We shouldn't need this with session cookies
     socket.current.on('connect', () => {
       console.log('Connected to server');
       socket.current.emit('join', { user: user });
-    });
-
-    // THIS IS NOT BEING USED
-    socket.current.on('transcript', (data) => {
-      console.log(`Transcript: ${data.transcript}, Final: ${data.final}, Speaker: ${data.speaker}`);
-      if (!data.final) {
-        setActiveLine(data.transcript);
-      } else {
-        setTranscripts((prevTranscripts) => [...prevTranscripts, activeLine]);
-        setActiveLine('');
-      }
     });
 
     socket.current.on('response', (data) => {
@@ -131,11 +121,11 @@ const TalkToIt = ({user}) => {
     }
   }
 
+  // We really don't need this
   const stopRecording = async () => {
     if (audioStreamRef.current) {
       audioStreamRef.current.getTracks()[0].stop();
       recorderRef.current.disconnect();
-      socket.current.emit('endAudio');
       console.log('Audio stream stopped');
     }
   }

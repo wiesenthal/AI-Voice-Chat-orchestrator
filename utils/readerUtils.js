@@ -1,4 +1,4 @@
-const shouldRead = (text) => {
+export function shouldRead(text) {
     // check if text ends with a comma or a punctuation mark
     // if it does, return true
     // else return false
@@ -6,6 +6,4 @@ const shouldRead = (text) => {
     const lastChar = text[text.length - 1];
 
     return punctuation.includes(lastChar);
-}
-
-exports.shouldRead = shouldRead;
+};

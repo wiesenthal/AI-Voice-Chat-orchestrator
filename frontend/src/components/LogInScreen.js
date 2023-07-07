@@ -18,6 +18,10 @@ const LogInScreen = ({ user, setUser }) => {
             .then((res) => res.json()
             .then((data) => {
                 console.log(data);
+                // TODO: this is not secure
+                if (data.success) {
+                    setUser(data.success);
+                }
             })
             );
     }
