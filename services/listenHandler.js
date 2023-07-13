@@ -1,9 +1,19 @@
 import { writeToAudioFile } from '../utils/audioUtils.js';
 
 export function streamAudioToFile(socket, fileWriter) {
-    socket.on('streamAudio', async (audioData) => {
+    // we need to return a function that can be used to remove the listener
+
+    const streamAudio = async (audioData) => {
         writeToAudioFile(fileWriter, audioData);
-    });
+    }
+
+    console.log('Adding streamAudio listener');
+    socket.on('streamAudio', streamAudio);
+
+    return () => {
+        console.log('Removing streamAudio listener');
+        socket.off('streamAudio', streamAudio);
+    }
 }
 
 export async function onAudioComplete(socket, timeout = 500000) {

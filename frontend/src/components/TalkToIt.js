@@ -8,7 +8,6 @@ const remoteAddress = "https://www.personalwaifu.com";
 
 const TalkToIt = () => {
   const [audioEnabled, setAudioEnabled] = useState(false);
-  const [activeLine, setActiveLine] = useState('');
   const [transcripts, setTranscripts] = useState([]);
   const [responses, setResponses] = useState([]);
   const audioStreamRef = useRef(null);
@@ -16,6 +15,7 @@ const TalkToIt = () => {
   const desiredSampleRateRef = useRef(16000); // Assuming this as the desired sample rate
   const socket = useRef(null);
   const audioQueue = useRef([]);
+  const curCommandID = useRef(null);
 
   const [_allowedCommands, _setAllowedCommands] = useState([]);
   const allowedCommandsRef = useRef(_allowedCommands);
@@ -54,6 +54,19 @@ const TalkToIt = () => {
           newResponses[index] = { id: `response_${data.commandID}`, text: data.words };
         }
         return newResponses;
+      });
+    });
+
+    socket.current.on('transcript', (data) => {
+      setTranscripts((prevTranscripts) => {
+        let newTranscripts = [...prevTranscripts];
+        let index = newTranscripts.findIndex((transcript) => transcript.id === `transcript_${data.commandID}`);
+        if (index === -1) {
+          newTranscripts.push({ id: `transcript_${data.commandID}`, text: data.transcript });
+        } else {
+          newTranscripts[index] = { id: `transcript_${data.commandID}`, text: data.transcript };
+        }
+        return newTranscripts;
       });
     });
 
@@ -100,6 +113,13 @@ const TalkToIt = () => {
         newAllowedCommands.push(data.commandID);
         return newAllowedCommands;
       });
+
+      curCommandID.current = data.commandID;
+    });
+
+    socket.current.on('commandComplete', (data) => {
+      console.log('Command complete: ', data.commandID);
+      curCommandID.current = null;
     });
 
     socket.current.on('transcript', (data) => {
@@ -112,6 +132,8 @@ const TalkToIt = () => {
   }, []);
 
   const startListening = () => {
+    cancelCommand(curCommandID.current);
+
     socket.current.emit('startListen');
     if (!audioEnabled) {
       let audio = new Audio();
@@ -125,8 +147,6 @@ const TalkToIt = () => {
           console.warn('Autoplay was prevented. Please enable audio.');
         });
     }
-
-    cancelPlayingAudio();
   };
 
   const stopListening = () => {
@@ -188,18 +208,34 @@ const TalkToIt = () => {
     socket.current.emit('streamAudio', buffer);
   }
 
-  const cancelPlayingAudio = () => {
-    // TODO: need to get the current command ID and send cancel command to server so brain can remove it from msg history
+  const cancelCommand = (currentCommand) => {
+    console.log(`Cancelling command ${currentCommand}`);
 
-    console.log('Cancelling playing audio');
+    if (currentCommand) {
+      socket.current.emit('cancelCommand', currentCommand);
+      
+      setTranscripts((prevTranscripts) => {
+        return prevTranscripts.filter((transcript) => {
+          return transcript.id !== `transcript_${currentCommand}`;
+        });
+      });
+  
+      setResponses((prevResponses) => {
+        return prevResponses.filter((response) => {
+          return response.id !== `response_${currentCommand}`;
+        });
+      });
+    }
+
     if (playingAudio.current) {
-      console.log('Pausing audio');
+      console.log('Cancelling audio');
       playingAudio.current.pause();
       playingAudio.current.currentTime = 0;
       
       // clear the audio queue
       audioQueue.current = [];
     }
+    
     setAllowedCommands([]);
   }
 
@@ -209,10 +245,6 @@ const TalkToIt = () => {
       <button onClick={stopRecording}>Stop Recording</button>
       <ListenButton onStartListening={startListening} onStopListening={stopListening} />
       <div id="output">
-        {activeLine && <p>{activeLine}</p>}
-        {transcripts.map((transcript, index) => (
-          <p key={index}>{transcript}</p>
-        ))}
         {responses.map((response) => (
           <p key={response.id}>{response.text}</p>
         ))}

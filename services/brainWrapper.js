@@ -41,8 +41,6 @@ export async function* sendTextToGPT(transcript, userID, commandID) {
         });
 
         response.on('end', () => {
-            console.log('End of response');
-            // push the last chunk
             chunks.push(null);
             promises.push(new Promise(resolve => chunks.push = resolve));
         });
@@ -95,6 +93,7 @@ export function sendCancelToBrain(userID, commandID) {
         console.error('Error when calling brain server:', error);
     });
 
+    console.log(`Sending cancel request to brain with userID: ${userID} and commandID: ${commandID}`);
     request.write(JSON.stringify({ userID: userID, commandID: commandID }));
     request.end();
 }

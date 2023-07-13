@@ -11,13 +11,13 @@ import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 import userRoutes from './routes/userRoutes.js';
 import Connection from './models/Connection.js';
-import { handleCommandLifecycle } from './services/commandHandler.js';
-import { sendCancelToBrain, sendDisconnectToBrain } from './services/brainWrapper.js';
+import CommandHandler from './models/CommandHandler.js';
+import { tryGetUserIDFromSession, handleDisconnect } from './utils/socketUtils.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const sessionMiddleware = session({
     secret: process.env.SESSION_SECRET_KEY,  // A secret string used to sign the session ID cookie
@@ -33,8 +33,12 @@ app.use(expressStatic(join(__dirname, 'frontend/build')));
 app.use(sessionMiddleware);
 app.use(userRoutes);
 
-const server = createServer(app);
+app.get('/', (req, res) => {
+    res.sendFile(join(__dirname + '/frontend/build/index.html'));
+});
 
+
+const server = createServer(app);
 const io = new Server(server, {
     cors: {
         origin: '*',
@@ -46,46 +50,12 @@ io.use(expressSocketIoSession(sessionMiddleware, {
     autoSave: true
 }));
 
-app.get('/', (req, res) => {
-    res.sendFile(join(__dirname + '/frontend/build/index.html'));
-});
-
 io.on('connection', async (socket) => {
-    const connectionID = socket.id;
-
-    let userID = null;
-    // get user from express session, as set in userRoutes.js
-    if (socket.handshake.session.userID) {
-        userID = socket.handshake.session.userID;
-        console.log(`Got user from session: ${userID}`);
-    }
-    else {
-        console.error('No user found in session, logging session:');
-        // log the session
-        console.error(socket.handshake.session);
-        // tell frontend to redirect to login page
-        socket.emit('redirect', '/login');
-        socket.disconnect();
-        return;
-    }
-
+    const userID = tryGetUserIDFromSession(socket);
     const connection = new Connection(userID, socket);
-
     
-    console.log('new connection, id: ', connectionID);
-    
-    handleCommandLifecycle(connection);
-
-    socket.on('disconnect', () => {
-        console.log('user disconnected, id: ', connectionID);
-        sendDisconnectToBrain(userID);
-    });
-
-    socket.on('cancelCommand', (commandID) => {
-        console.log(`cancelCommand received, commandID: ${commandID}`);
-        sendCancelToBrain(userID, commandID);
-    });
-
+    new CommandHandler(connection);
+    handleDisconnect(connection);
 });
 
 const port = process.env.PORT || 1000;

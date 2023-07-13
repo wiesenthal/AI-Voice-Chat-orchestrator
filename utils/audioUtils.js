@@ -1,6 +1,6 @@
 import { transcribe } from "../services/deepgramTranscription.js";
 import { FileWriter } from 'wav';
-import { readFileSync, unlink } from 'fs';
+import { readFileSync, unlink, existsSync } from 'fs';
 
 export async function transcribeAudioFile(filename) {
     const { audio, mimetype } = readAudioFile(filename);
@@ -18,6 +18,7 @@ export function readAudioFile(filename) {
 
 export function initializeAudioFile(commandID) {
     const filename = `audioFiles/${commandID}.wav`;
+
     const  fileWriter = new FileWriter(filename, {
         channels: 1,
         sampleRate: 16000,
@@ -29,6 +30,19 @@ export function initializeAudioFile(commandID) {
 
 export function writeToAudioFile(fileWriter, audioData) {
     try {
+        // check if fileWriter is already ended
+        if (fileWriter._writableState.finished) {
+            console.log('Tried to write to fileWriter, fileWriter already ended');
+            return;
+        }
+
+        if (!existsSync(fileWriter.path)) {
+            console.log('Tried to write to fileWriter, fileWriter path does not exist');
+            // print stack trace
+            console.trace();
+            return;
+        }
+
         fileWriter.write(Buffer.from(audioData));
     }
     catch (err) {
@@ -38,6 +52,15 @@ export function writeToAudioFile(fileWriter, audioData) {
 
 export function endFileWriter(fileWriter) {
     try {
+        if (fileWriter === null) {
+            console.log('Tried to end fileWriter, FileWriter is null');
+            return;
+        }
+        // check if fileWriter is already ended
+        if (fileWriter._writableState.finished) {
+            console.log('Tried to end fileWriter, fileWriter already ended');
+            return;
+        }
         fileWriter.end();
     }
     catch (err) {
@@ -45,13 +68,18 @@ export function endFileWriter(fileWriter) {
     }
 }
 
-export function tryDeleteFile(filename) {
+export function tryDeleteFile(filename, fileWriter) {
     try {
-        unlink(filename, (err) => {
-            if (err) {
-                console.warn(`Error deleting file ${filename}: ${err}`);
-            }
-        });
+        endFileWriter(fileWriter);
+        
+        // delete file in 0.5 seconds
+        setTimeout(() => {
+            unlink(filename, (err) => {
+                if (err) {
+                    console.warn(`Error deleting file ${filename}: ${err}`);
+                }
+            });
+        }, 500);
     }
     catch (err) {
         console.warn(`Error deleting file ${filename}: ${err}`);
