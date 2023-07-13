@@ -6,7 +6,7 @@ const runningLocally = true;
 const localAddress = "http://localhost:1000";
 const remoteAddress = "https://www.personalwaifu.com";
 
-const TalkToIt = ({user}) => {
+const TalkToIt = () => {
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [activeLine, setActiveLine] = useState('');
   const [transcripts, setTranscripts] = useState([]);
@@ -17,15 +17,31 @@ const TalkToIt = ({user}) => {
   const socket = useRef(null);
   const audioQueue = useRef([]);
 
-  useEffect(() => {
+  const [_allowedCommands, _setAllowedCommands] = useState([]);
+  const allowedCommandsRef = useRef(_allowedCommands);
+  const setAllowedCommands = (data) => {
+    // handle the case where we are passed a function
+    if (typeof data === 'function') {
+      _setAllowedCommands((prevData) => {
+        let newData = data(prevData);
+        allowedCommandsRef.current = newData;
+        return newData;
+      });
+    } else {
+      _setAllowedCommands(data);
+      allowedCommandsRef.current = data;
+    }
+  };
+  // create a reference to set the currently playing audio
+  const playingAudio = useRef(null);
 
+  useEffect(() => {
     // this socket needs to be associated with the user id
     socket.current = io(runningLocally ? localAddress : remoteAddress);
   
     // We shouldn't need this with session cookies
     socket.current.on('connect', () => {
       console.log('Connected to server');
-      socket.current.emit('join', { user: user });
     });
 
     socket.current.on('response', (data) => {
@@ -43,9 +59,21 @@ const TalkToIt = ({user}) => {
 
     function playAudio() {
       if (audioQueue.current.length > 0) {
-        let audio = audioQueue.current[0];
+        const audio = audioQueue.current[0].audio;
+        const commandID = audioQueue.current[0].commandID;
+        console.log(`Playing audio for command ID ${commandID}`);
+
+        if (!allowedCommandsRef.current.includes(commandID)) {
+          console.log(`Command ID ${commandID} not allowed, skipping audio. Allowed commands: ${allowedCommandsRef.current}`);
+          audioQueue.current.shift();
+          playAudio();
+          return;
+        }
+
         audio.play();
+        playingAudio.current = audio;
         audio.onended = () => {
+          playingAudio.current = null;
           audioQueue.current.shift();
           playAudio();
         };
@@ -53,11 +81,29 @@ const TalkToIt = ({user}) => {
     }
 
     socket.current.on('audioData', (data) => {
-      let audio = new Audio('data:audio/mp3;base64,' + data.audioStream);
-      audioQueue.current.push(audio);
+      const commandID = data.commandID;
+      const audioID = data.audioID; // this is not used, it should be the order of the audio chunk
+
+      console.log('Received audio data for command: ', commandID, ' audioID: ', audioID);
+      const audio = new Audio('data:audio/mp3;base64,' + data.audioStream);
+      audioQueue.current.push({audio: audio, commandID: commandID});
       if (audioQueue.current.length === 1) {
         playAudio();
       }
+    });
+
+    socket.current.on('receivedCommand', (data) => {
+      // add the commandID to the list of allowed commands
+      console.log('Server received command: ', data.commandID);
+      setAllowedCommands((prevAllowedCommands) => {
+        let newAllowedCommands = [...prevAllowedCommands];
+        newAllowedCommands.push(data.commandID);
+        return newAllowedCommands;
+      });
+    });
+
+    socket.current.on('transcript', (data) => {
+      console.log('Received transcript: ', data);
     });
 
     return () => {
@@ -66,7 +112,7 @@ const TalkToIt = ({user}) => {
   }, []);
 
   const startListening = () => {
-    socket.current.emit('listen');
+    socket.current.emit('startListen');
     if (!audioEnabled) {
       let audio = new Audio();
       audio
@@ -79,10 +125,17 @@ const TalkToIt = ({user}) => {
           console.warn('Autoplay was prevented. Please enable audio.');
         });
     }
+
+    cancelPlayingAudio();
   };
 
   const stopListening = () => {
-    socket.current.emit('stopListening');
+    // emit stop listening in .15 seconds to make sure the server has time to process the last audio chunk
+    const STOP_LISTENING_DELAY = 150;
+    setTimeout(() => {
+      socket.current.emit('endListen');
+    }
+      , STOP_LISTENING_DELAY);
   };
 
   const startRecording = async () => {
@@ -107,7 +160,7 @@ const TalkToIt = ({user}) => {
 
     audioInput.connect(recorder);
     recorder.connect(audioContext.destination);
-    socket.current.emit('startAudio');
+    socket.current.emit('startRecording');
 
     if (!audioEnabled) {
       let audio = new Audio();
@@ -127,11 +180,27 @@ const TalkToIt = ({user}) => {
       audioStreamRef.current.getTracks()[0].stop();
       recorderRef.current.disconnect();
       console.log('Audio stream stopped');
+      socket.current.emit('stopRecording');
     }
   }
 
   const sendToServer = (buffer) => {
     socket.current.emit('streamAudio', buffer);
+  }
+
+  const cancelPlayingAudio = () => {
+    // TODO: need to get the current command ID and send cancel command to server so brain can remove it from msg history
+
+    console.log('Cancelling playing audio');
+    if (playingAudio.current) {
+      console.log('Pausing audio');
+      playingAudio.current.pause();
+      playingAudio.current.currentTime = 0;
+      
+      // clear the audio queue
+      audioQueue.current = [];
+    }
+    setAllowedCommands([]);
   }
 
   return (

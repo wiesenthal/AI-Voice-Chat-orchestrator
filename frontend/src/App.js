@@ -4,15 +4,15 @@ import TalkToIt from './components/TalkToIt';
 import LogInScreen from './components/LogInScreen';
 
 function App() {
-  const [user, setUser] = useState(null);
+  const [isLoggedIn, setLoggedIn] = useState(false);
 
   return (
     <div className="App">
       {
-    user ?
-      <TalkToIt user={user}/>
+    isLoggedIn ?
+      <TalkToIt/>
       :
-      <LogInScreen user={user} setUser={setUser} />
+      <LogInScreen isLoggedIn={isLoggedIn} setLoggedIn={setLoggedIn} />
       }
     </div>
   )

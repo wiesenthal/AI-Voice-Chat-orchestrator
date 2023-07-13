@@ -1,7 +1,9 @@
-import dotenv from 'dotenv';
-dotenv.config();
 import pkg from '@deepgram/sdk';
 const { Deepgram } = pkg;
+
+import dotenv from 'dotenv';
+dotenv.config();
+
 const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
 
 const deepgram = new Deepgram(deepgramApiKey);

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 
-const LogInScreen = ({ user, setUser }) => {
+const LogInScreen = ({ isLoggedIn, setLoggedIn }) => {
     const [clientId, setClientId] = React.useState(null);
 
     function signIn(credentialResponse) {
@@ -17,10 +17,8 @@ const LogInScreen = ({ user, setUser }) => {
         })
             .then((res) => res.json()
             .then((data) => {
-                console.log(data);
-                // TODO: this is not secure
                 if (data.success) {
-                    setUser(data.success);
+                    setLoggedIn(data.success);
                 }
             })
             );
@@ -28,6 +26,18 @@ const LogInScreen = ({ user, setUser }) => {
 
     useEffect(() => {
         // get client id from session
+        console.log("Getting session login");
+        fetch("/try-session-login")
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.success) {
+                    console.log("Got session login");
+                    setLoggedIn(data.success);
+                }
+                else {
+                    console.log("No session login");
+                }
+            });
 
 
         fetch("/google-client-id")
@@ -41,7 +51,7 @@ const LogInScreen = ({ user, setUser }) => {
         return <div>Loading...</div>;
     }
 
-    if (!user) {
+    if (!isLoggedIn) {
         return (
             <GoogleOAuthProvider
                 clientId={clientId}

@@ -9,17 +9,26 @@ const client = new PollyClient(
     }
 );
 
-const DEFAULT_VOICE = "Matthew";
+// TODO: move these to /configuration
+const DEFAULT_ENGINE = "standard";
+const DEFAULT_VOICE = "Amy";
 
 // Polly Queue helper
 class PollyQueue {
-    constructor() {
+    constructor(socket) {
         this.queue = [];
         this.processing = false;
         this.eventEmitter = new EventEmitter();
         this.completedAudio = {};  // Stores completed audio streams by ID
         this.nextCountId = 1;  // The ID of the next audio stream to emit
         this.totalIdCount = 1; // The total number of audio streams emitted
+
+        this.onAudioData(({ audioStream, audioID, commandID }) => {
+            console.log('Sending audio data to client for command:', commandID);
+            const base64Audio = audioStream.toString('base64');
+
+            socket.emit('audioData', { audioStream: base64Audio, audioID, commandID });
+        });
     }
 
     enqueue(request) {
@@ -28,6 +37,15 @@ class PollyQueue {
         if (!this.processing) {
             this.processNext();
         }
+    }
+
+    enqueueCommand(words, commandID, engine=DEFAULT_ENGINE, voice=DEFAULT_VOICE) {
+        this.enqueue({
+            text: words,
+            voice: voice,
+            engine: engine,
+            commandID: commandID
+        });
     }
 
     async processNext() {
@@ -52,7 +70,7 @@ class PollyQueue {
                         Engine: request.engine || "neural",
                         OutputFormat: "mp3",
                         SampleRate: "16000",
-                        Text: `<speak><prosody rate="120%">${request.text}</prosody></speak>`,
+                        Text: `<speak><prosody rate="140%">${request.text}</prosody></speak>`,
                         TextType: "ssml",
                         VoiceId: request.voice || "Salli"
                     }
@@ -68,7 +86,7 @@ class PollyQueue {
                 }
                 audioStream = Buffer.concat(audioStream);
 
-                this.completedAudio[request.countId] = audioStream;
+                this.completedAudio[request.countId] = {audioStream: audioStream, commandID: request.commandID};
                 this.sendNextCompletedAudio();
             } catch (err) {
                 console.log('Error in Polly request:', err);
@@ -80,10 +98,11 @@ class PollyQueue {
 
     sendNextCompletedAudio() {
         while (this.completedAudio[this.nextCountId]) {
-            const audioStream = this.completedAudio[this.nextCountId];
+            const audioStream = this.completedAudio[this.nextCountId].audioStream;
+            const commandID = this.completedAudio[this.nextCountId].commandID;
             delete this.completedAudio[this.nextCountId];
 
-            this.eventEmitter.emit('audioData', { audioStream, id: this.nextCountId });
+            this.eventEmitter.emit('audioData', { audioStream, audioID: this.nextCountId, commandID: commandID });
             this.nextCountId++;
         }
     }
