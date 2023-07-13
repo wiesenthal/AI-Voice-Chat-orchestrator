@@ -17,6 +17,7 @@ const __dirname = dirname(__filename);
 import userRoutes from './routes/userRoutes.js';
 import Connection from './models/Connection.js';
 import { handleCommandLifecycle } from './services/commandHandler.js';
+import { sendCancelToBrain, sendDisconnectToBrain } from './services/brainWrapper.js';
 
 const sessionMiddleware = session({
     secret: process.env.SESSION_SECRET_KEY,  // A secret string used to sign the session ID cookie
@@ -77,11 +78,12 @@ io.on('connection', async (socket) => {
 
     socket.on('disconnect', () => {
         console.log('user disconnected, id: ', connectionID);
+        sendDisconnectToBrain(userID);
     });
 
     socket.on('cancelCommand', (commandID) => {
-        //TODO: implement, send to brain
         console.log(`cancelCommand received, commandID: ${commandID}`);
+        sendCancelToBrain(userID, commandID);
     });
 
 });

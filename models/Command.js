@@ -35,19 +35,26 @@ class Command {
         await onAudioComplete(this.connection.socket);
 
         this.transcript = await transcribeAudioFile(this.filename);
+
+        // if transcript.trim() is empty, then the user didn't say anything
+        if (this.transcript.trim() === '') {
+            console.log('User did not say anything. Ending command.');
+            this.destroy();
+            return;
+        }
+
         // emit the transcript to the frontend
         this.connection.emit('transcript', { transcript: this.transcript, commandID: this.commandID });
 
         const response = new Response();
         for await (const word of sendTextToGPT(this.transcript, this.connection.userID, this.commandID)) {
-            console.log(`Received word from brain: ${word}`);
             if (word == null) {
                 console.log(`Received null word from brain. Ending command.`);
                 break;
             }
             response.addWord(word);
 
-            this.connection.emit('response', response.getFormattedWords());
+            this.connection.emit('response', response.getFormattedWords(this.commandID));
             
             if (response.shouldRead()) {
                 this.pollyQueue.enqueueCommand(response.getUnreadWords(), this.commandID);
@@ -55,11 +62,12 @@ class Command {
             }
         }
 
-        // done
+        this.destroy();
+    }
+
+    destroy() {
         console.log(`Command ${this.commandID} complete.`);
-
         this.connection.emit('commandComplete', { commandID: this.commandID });
-
         tryDeleteFile(this.filename);
     }
 }

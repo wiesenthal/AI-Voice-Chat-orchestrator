@@ -33,10 +33,10 @@ class Response {
     }
 
     getFormattedWords(commandID) {
-        return {
-            "words": this.words,
-            "responseId": commandID
-        }
+        return ({
+            words: this.words,
+            commandID: commandID
+        })
     }
 }
 

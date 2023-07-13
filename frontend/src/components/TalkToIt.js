@@ -47,11 +47,11 @@ const TalkToIt = () => {
     socket.current.on('response', (data) => {
       setResponses((prevResponses) => {
         let newResponses = [...prevResponses];
-        let index = newResponses.findIndex((response) => response.id === `response_${data.responseId}`);
+        let index = newResponses.findIndex((response) => response.id === `response_${data.commandID}`);
         if (index === -1) {
-          newResponses.push({ id: `response_${data.responseId}`, text: data.words });
+          newResponses.push({ id: `response_${data.commandID}`, text: data.words });
         } else {
-          newResponses[index] = { id: `response_${data.responseId}`, text: data.words };
+          newResponses[index] = { id: `response_${data.commandID}`, text: data.words };
         }
         return newResponses;
       });
@@ -174,7 +174,7 @@ const TalkToIt = () => {
     }
   }
 
-  // We really don't need this
+  // We don't really need this
   const stopRecording = async () => {
     if (audioStreamRef.current) {
       audioStreamRef.current.getTracks()[0].stop();
