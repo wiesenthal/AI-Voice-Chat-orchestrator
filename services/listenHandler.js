@@ -1,4 +1,4 @@
-import { writeToAudioFile } from '../utils/audioUtils.js';
+import { writeToAudioFile } from '../utils/audioFileUtils.js';
 
 export function streamAudioToFile(socket, fileWriter) {
     // we need to return a function that can be used to remove the listener

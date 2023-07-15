@@ -1,6 +1,5 @@
 import { Router } from 'express';
-import { dbQueryPool } from '../services/database.js';
-import { authenticateJWT, doesUserExist, hasUserPaid } from '../services/authentication.js';
+import { authenticateJWT, getUserFromGoogleJWTPayload, authenticateUserInDB, createUserFromGoogleJWTPayload } from '../utils/userUtils.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -11,13 +10,17 @@ router.get('/google-client-id', (req, res) => {
 });
 
 // change the above to a get request
-router.get('/try-session-login', (req, res) => {
+router.get('/try-session-login', async (req, res) => {
     // try to get the user Id from the session
     try {
-        const userID = req.session.userID;
-        if (userID) {
+        const user = req.session.user;
+        // check if the user exists in the database
+        // TODO: check if the user has paid
+        const userExists = await authenticateUserInDB(user);
+        if (userExists) {
             res.send({ success: true });
-        } else {
+        }
+        else {
             res.send({ success: false });
         }
     }
@@ -30,21 +33,32 @@ router.get('/try-session-login', (req, res) => {
 router.post('/login', async (req, res) => {
     try {
         const payload = await authenticateJWT(req.body.token);
-        console.log(`User logged in: ${JSON.stringify(payload)}`);
-        // get user from database (or create new user)
-        let userID = payload.sub;
-        let email = payload.email;
-        // test connection to database
-        
-        try {
-            const [rows] = await dbQueryPool.execute('SHOW DATABASES;');
-            console.log(`Successfully made database query. Rows: ${JSON.stringify(rows)}`);
-        } catch(err) {
-            console.log(err);
+        if (!payload) {
+            console.log(`User tried to log in with invalid token: ${req.body.token}`)
+            res.status(401).send({ success: false });
+            return;
         }
 
-        // If credentials are valid:
-        req.session.userID = userID;  // Save something to session
+        console.log(`User logged in: ${JSON.stringify(payload)}`);
+        // get user from database (or create new user)
+
+        // check if the user exists in the database
+        let user = await getUserFromGoogleJWTPayload(payload);
+
+        if (!user) {
+            // should send user to different UI here, but for now just automatically create a new user
+            user = await createUserFromGoogleJWTPayload(payload);
+        }
+
+        if (!user) {
+            console.log(`User creation failed for payload: ${JSON.stringify(payload)}`)
+            res.status(401).send({ success: false });
+            return;
+        }
+
+        // TODO: check if the user has paid
+
+        req.session.user = user;
         res.send({ success: true });
     } catch (err) {
         console.log(err);

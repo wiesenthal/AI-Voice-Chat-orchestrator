@@ -1,25 +1,34 @@
 import { sendDisconnectToBrain } from "../services/brainWrapper.js";
+import { authenticateUserInDB } from "./userUtils.js";
 
-function getUserIDFromSession(socket) {
+function getUserFromSession(socket) {
     if (!socket.handshake)
         
     if (!socket.handshake.session)
         return null;
-    if (!socket.handshake.session.userID)
+    if (!socket.handshake.session.user)
         return null;
 
-    return socket.handshake.session.userID;
+    return socket.handshake.session.user;
 }
 
-export function tryGetUserIDFromSession(socket) {
-    const userID = getUserIDFromSession(socket);
-    if (userID === null) {
+export function tryGetUserFromSession(socket) {
+    const user = getUserFromSession(socket);
+    if (user === null) {
         console.error('No user found in session, logging session:');
         console.error(socket.handshake.session);
         socket.emit('redirect', '/login'); // tell frontend to redirect to login page
         socket.disconnect();
     }
-    return userID;
+
+    if (!authenticateUserInDB(user)) {
+        console.error('User in session is not authenticated in DB, logging session:');
+        console.error(socket.handshake.session);
+        socket.emit('redirect', '/login'); // tell frontend to redirect to login page
+        socket.disconnect();
+    }
+
+    return user;
 }
 
 export function handleDisconnect(connection) {

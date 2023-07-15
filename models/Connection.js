@@ -1,7 +1,8 @@
 // a simple object storing the user and socket, and socket id
 class Connection {
-    constructor(userID, socket) {
-        this.userID = userID;
+    constructor(user, socket) {
+        this.user = user;
+        this.userID = user.userID;
         this.socket = socket;
         this.socketID = socket.id;
     }

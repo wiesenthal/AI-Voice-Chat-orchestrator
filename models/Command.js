@@ -1,6 +1,6 @@
 import { v4 } from 'uuid';
 
-import { initializeAudioFile, transcribeAudioFile, tryDeleteFile } from '../utils/audioUtils.js';
+import { initializeAudioFile, transcribeAudioFile, tryDeleteFile } from '../utils/audioFileUtils.js';
 import { streamAudioToFile, onAudioComplete } from '../services/listenHandler.js';
 import { sendTextToGPT } from '../services/brainWrapper.js';
 import Response from './Response.js';
