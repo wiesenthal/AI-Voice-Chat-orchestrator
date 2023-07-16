@@ -4,6 +4,7 @@ import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 
 const LogInScreen = ({ isLoggedIn, setLoggedIn }) => {
     const [clientId, setClientId] = React.useState(null);
+    const [hasTriedSessionLogin, setHasTriedSessionLogin] = React.useState(false);
 
     function signIn(credentialResponse) {
         let jwt = credentialResponse.credential;
@@ -33,9 +34,11 @@ const LogInScreen = ({ isLoggedIn, setLoggedIn }) => {
                 if (data.success) {
                     console.log("Got session login");
                     setLoggedIn(data.success);
+                    setHasTriedSessionLogin(true);
                 }
                 else {
                     console.log("No session login");
+                    setHasTriedSessionLogin(true);
                 }
             });
 
@@ -47,7 +50,7 @@ const LogInScreen = ({ isLoggedIn, setLoggedIn }) => {
             });
     }, []);
 
-    if (clientId === null) {
+    if (clientId === null || !hasTriedSessionLogin) {
         return <div>Loading...</div>;
     }
 
