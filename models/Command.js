@@ -25,28 +25,22 @@ class Command {
     }
 
     async main() {
+        this.emitReceivedCommand();
         await this.receiveAudio();
-
         if (this.isCancelled) return;
-        
+
         this.transcript = await transcribeAudioFile(this.filename);
-
         this.checkEmptyTranscript();
-
+        this.emitTranscript();
         if (this.isCancelled) return;
 
         await this.makeResponseAndEmit();
-
         if (this.isCancelled) return;
-
+        
         this.complete();
     }
 
     async receiveAudio() {
-        // should alert the frontend that we received the audio
-        console.log('Emitting receivedCommand');
-        this.connection.emit('receivedCommand', { commandID: this.commandID });
-
         // pump in audio streamed from the front end into the audio file
         const stopStreamingCallback = streamAudioToFile(this.connection.socket, this.fileWriter);
 
@@ -56,8 +50,6 @@ class Command {
     }
 
     async makeResponseAndEmit() {
-        this.connection.emit('transcript', { transcript: this.transcript, commandID: this.commandID });
-
         const response = new Response();
         for await (const word of sendTextToGPT(this.transcript, this.connection.userID, this.commandID)) {
             if (this.isCancelled) return;
@@ -79,6 +71,13 @@ class Command {
         }
     }
 
+    emitTranscript() {
+        this.connection.emit('transcript', { transcript: this.transcript, commandID: this.commandID });
+    }
+
+    emitReceivedCommand() {
+        this.connection.emit('receivedCommand', { commandID: this.commandID });
+    }
 
     checkEmptyTranscript() {
         if (!this.transcript || this.transcript.trim() === '') {

@@ -31,6 +31,8 @@ app.use(cors());
 app.use(json());
 app.use(expressStatic(join(__dirname, 'frontend/build')));
 app.use(sessionMiddleware);
+
+// User routes for login & payment
 app.use(userRoutes);
 
 app.get('/', (req, res) => {
@@ -52,6 +54,12 @@ io.use(expressSocketIoSession(sessionMiddleware, {
 
 io.on('connection', async (socket) => {
     const user = tryGetUserFromSession(socket);
+
+    if (!user) {
+        socket.disconnect();
+        return;
+    }
+
     const connection = new Connection(user, socket);
     
     new CommandHandler(connection);
