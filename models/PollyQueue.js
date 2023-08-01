@@ -5,7 +5,7 @@ import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
 
 const client = new PollyClient(
     {
-        region: "us-west-1"
+        region: "us-west-2"
     }
 );
 
