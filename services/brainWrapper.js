@@ -30,19 +30,18 @@ export async function* sendTextToGPT(transcript, userID, commandID) {
     }
 
 
-    const chunks = [];
-    const promises = [new Promise(resolve => chunks.push = resolve)];
+    let resolveNext;  // Function to resolve the next promise
+    const promises = [new Promise(resolve => resolveNext = resolve)];
 
     const request = _request(options, (response) => {
-
         response.on('data', (chunk) => {
-            chunks.push(chunk);
-            promises.push(new Promise(resolve => chunks.push = resolve));
+            resolveNext(chunk);  // Resolve the current promise with the chunk
+            promises.push(new Promise(resolve => resolveNext = resolve));  // Add a new promise
         });
 
         response.on('end', () => {
-            chunks.push(null);
-            promises.push(new Promise(resolve => chunks.push = resolve));
+            resolveNext(null);  // Resolve the current promise with null
+            promises.push(new Promise(resolve => resolveNext = resolve));  // Add a new promise for any subsequent events
         });
     });
 

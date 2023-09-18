@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import ListenButton from './ListenButton';
+import MarkdownBox from './markdown';
+import { prepareTranscriptsAndResponses } from '../utils/textUtils';
 
 const runningLocally = true;
 const localAddress = "http://localhost:1000";
@@ -45,26 +47,30 @@ const TalkToIt = () => {
     });
 
     socket.current.on('response', (data) => {
+      // get the current time
+      const timestamp = new Date().getTime();
       setResponses((prevResponses) => {
         let newResponses = [...prevResponses];
         let index = newResponses.findIndex((response) => response.id === `response_${data.commandID}`);
         if (index === -1) {
-          newResponses.push({ id: `response_${data.commandID}`, text: data.words });
+          newResponses.push({ id: `response_${data.commandID}`, text: data.words, timestamp: timestamp });
         } else {
-          newResponses[index] = { id: `response_${data.commandID}`, text: data.words };
+          newResponses[index] = { id: `response_${data.commandID}`, text: data.words, timestamp: timestamp };
         }
         return newResponses;
       });
     });
 
     socket.current.on('transcript', (data) => {
+      // get the current time
+      const timestamp = new Date().getTime();
       setTranscripts((prevTranscripts) => {
         let newTranscripts = [...prevTranscripts];
         let index = newTranscripts.findIndex((transcript) => transcript.id === `transcript_${data.commandID}`);
         if (index === -1) {
-          newTranscripts.push({ id: `transcript_${data.commandID}`, text: data.transcript });
+          newTranscripts.push({ id: `transcript_${data.commandID}`, text: data.transcript, timestamp: timestamp });
         } else {
-          newTranscripts[index] = { id: `transcript_${data.commandID}`, text: data.transcript };
+          newTranscripts[index] = { id: `transcript_${data.commandID}`, text: data.transcript, timestamp: timestamp };
         }
         return newTranscripts;
       });
@@ -239,15 +245,23 @@ const TalkToIt = () => {
     setAllowedCommands([]);
   }
 
+  const transcriptsAndResponses = prepareTranscriptsAndResponses(transcripts, responses);
+
   return (
     <div className="TalkToIt">
       <button onClick={startRecording}>Start Recording</button>
       <button onClick={stopRecording}>Stop Recording</button>
       <ListenButton onStartListening={startListening} onStopListening={stopListening} />
       <div id="output">
-        {responses.map((response) => (
-          <p key={response.id}>{response.text}</p>
-        ))}
+        {
+          transcriptsAndResponses.map((item) => {
+            return (
+              <pre key={item.id} className={item.messageType}>
+              <MarkdownBox markdownString={item.text} />
+              </pre>
+            );
+          })
+        }
       </div>
     </div>
   );
