@@ -52,11 +52,19 @@ class Command {
     async makeResponseAndEmit() {
         const response = new Response();
         for await (const word of sendTextToGPT(this.transcript, this.connection.userID, this.commandID)) {
-            if (this.isCancelled) return;
+            if (this.isCancelled) {
+                return;
+            }
 
             if (word == null) {
                 // end of response
-                break;
+                return;
+            }
+
+            if (word.error) {
+                console.error(`Error when calling GPT server: ${word.error}`);
+                this.cancel();
+                return;
             }
 
             response.addWord(word);

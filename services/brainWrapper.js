@@ -34,7 +34,16 @@ export async function* sendTextToGPT(transcript, userID, commandID) {
     const promises = [new Promise(resolve => resolveNext = resolve)];
 
     const request = _request(options, (response) => {
-        response.on('data', (chunk) => {
+        // error handling
+        if (response.statusCode !== 200) {
+            response.on('data', (chunk) => {
+                const errorMsg = chunk.toString();
+                resolveNext({ error: errorMsg, statusCode: response.statusCode });
+            });
+            return;
+        }
+
+        response.on('data', (chunk) => {            
             resolveNext(chunk);  // Resolve the current promise with the chunk
             promises.push(new Promise(resolve => resolveNext = resolve));  // Add a new promise
         });
